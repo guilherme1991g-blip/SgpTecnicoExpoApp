@@ -13,6 +13,7 @@ import {
   Platform,
   StatusBar,
 } from 'react-native';
+import * as Device from 'expo-device';
 import * as ImagePicker from 'expo-image-picker';
 import { updateChamadoStatus, addAnexoBase64 } from '../services/sgpApi';
 import { Feather } from '@expo/vector-icons';
@@ -120,12 +121,25 @@ export const OsCloseScreen: React.FC<Props> = ({ osId, onBack, onFinishSuccess }
     setErrorMsg(null);
 
     try {
+      // Captura o nome, marca e modelo do celular do técnico
+      const deviceParts = [
+        Device.deviceName,
+        Device.brand,
+        Device.modelName
+      ].filter(Boolean);
+
+      const deviceNameStr = deviceParts.length > 0 ? deviceParts.join(' - ') : 'Dispositivo Móvel';
+      const deviceNote = `[Dispositivo: ${deviceNameStr}]`;
+      const finalObs = observacao.trim()
+        ? `${observacao.trim()}\n\n${deviceNote}`
+        : deviceNote;
+
       // 1. Atualiza status da O.S. para Encerrada (os_status: 1)
       await updateChamadoStatus(
         osId,
         1,
         servicoPrestado,
-        observacao
+        finalObs
       );
 
       // 2. Envia todas as fotos anexadas para o SGP (/api/central/chamado/{osId}/anexo/add/)
