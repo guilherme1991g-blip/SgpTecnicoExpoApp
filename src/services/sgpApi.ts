@@ -530,22 +530,27 @@ export const fetchOnuFttxInfo = async (onuIdOrSerial: string | number) => {
     const durMatch = rawText.match(/Online Duration:\s*([^\n]+)/i);
     const phaseMatch = rawText.match(/Phase state:\s*([^\n]+)/i);
 
-    // Tabela de histórico de quedas e causas
-    let lastOfflineCause = '';
+    // Tabela de histórico de quedas e causas (extrai a última sessão ativa sem desconexão)
+    let lastActiveAuthTime = '';
     let lastOfflineTime = '';
+    let lastOfflineCause = '';
     const logsList: { id: string; inicio: string; fim: string; causa: string }[] = [];
     const lines = rawText.split('\n');
 
     for (const line of lines) {
-      const m = line.match(/^\s*(\d+)\s+(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s+(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s+([A-Za-z0-9_]+)/);
+      const m = line.match(/^\s*(\d+)\s+(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s+(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s*([A-Za-z0-9_]*)/);
       if (m) {
         const id = m[1];
         const inicio = m[2];
         const fimRaw = m[3];
-        const causeRaw = m[4];
+        const causeRaw = m[4] || '';
 
-        lastOfflineTime = fimRaw;
-        lastOfflineCause = causeRaw;
+        if (fimRaw.startsWith('0000')) {
+          lastActiveAuthTime = inicio;
+        } else {
+          lastOfflineTime = fimRaw;
+          lastOfflineCause = causeRaw;
+        }
 
         let causePt = causeRaw;
         if (causeRaw === 'DyingGasp') {
@@ -559,12 +564,33 @@ export const fetchOnuFttxInfo = async (onuIdOrSerial: string | number) => {
         }
 
         const fimFormatted = fimRaw.startsWith('0000') ? 'Conectado (Ativo)' : fimRaw;
-        logsList.push({ id, inicio, fim: fimFormatted, causa: causePt });
+        logsList.push({ id, inicio, fim: fimFormatted, causa: causePt || 'Sessão Ativa' });
       }
     }
 
     // Pega os ultimos 5 logs (mais recentes primeiro)
     const last5Logs = logsList.slice(-5).reverse();
+
+    // Calcula a duração exata da última conexão sem desconexão (0000-00-00)
+    let realActiveDuration = '';
+    if (lastActiveAuthTime) {
+      const authTs = parseSgpDateToTimestamp(lastActiveAuthTime);
+      if (authTs > 0) {
+        const diffMs = Date.now() - authTs;
+        if (diffMs > 0) {
+          const diffSec = Math.floor(diffMs / 1000);
+          const days = Math.floor(diffSec / (3600 * 24));
+          const hours = Math.floor((diffSec % (3600 * 24)) / 3600);
+          const mins = Math.floor((diffSec % 3600) / 60);
+
+          const parts = [];
+          if (days > 0) parts.push(`${days} dia${days > 1 ? 's' : ''}`);
+          if (hours > 0 || days > 0) parts.push(`${hours} hr${hours > 1 ? 's' : ''}`);
+          parts.push(`${mins} min`);
+          realActiveDuration = parts.join(', ');
+        }
+      }
+    }
 
     let causeFormatted = lastOfflineCause;
     if (lastOfflineCause === 'DyingGasp') {
@@ -584,30 +610,13 @@ export const fetchOnuFttxInfo = async (onuIdOrSerial: string | number) => {
       phasePt = 'Falha de Autenticação / Configuração';
     }
 
-    let onlineDurFormatted = durMatch ? durMatch[1].trim() : '';
-    if (onlineDurFormatted) {
-      const hMatch = onlineDurFormatted.match(/(\d+)h\s*(\d+)m\s*(\d+)s/);
-      if (hMatch) {
-        const totalHours = parseInt(hMatch[1], 10);
-        const mins = parseInt(hMatch[2], 10);
-        const days = Math.floor(totalHours / 24);
-        const remHours = totalHours % 24;
-
-        const parts = [];
-        if (days > 0) parts.push(`${days} dia${days > 1 ? 's' : ''}`);
-        if (remHours > 0 || days > 0) parts.push(`${remHours} hr${remHours > 1 ? 's' : ''}`);
-        parts.push(`${mins} min`);
-        onlineDurFormatted = parts.join(', ');
-      }
-    }
-
     return {
       onu_rx_power: rxOnuMatch ? parseFloat(rxOnuMatch[1]) : undefined,
       onu_tx_power: txOnuMatch ? parseFloat(txOnuMatch[1]) : undefined,
       onu_olt_rx_power: rxOltMatch ? parseFloat(rxOltMatch[1]) : undefined,
       onu_attenuation: attMatch ? `${attMatch[1]} dB` : undefined,
       onu_distance: distMatch ? distMatch[1].trim() : undefined,
-      onu_online_duration: onlineDurFormatted,
+      onu_online_duration: realActiveDuration || (durMatch ? durMatch[1].trim() : ''),
       onu_phase_state: phasePt,
       onu_last_offline_cause: causeFormatted,
       onu_last_offline_time: lastOfflineTime.startsWith('0000') ? 'Nenhum' : lastOfflineTime,
