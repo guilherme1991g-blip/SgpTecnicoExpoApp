@@ -12,6 +12,7 @@ import {
   Modal,
 } from 'react-native';
 import * as Location from 'expo-location';
+import * as Clipboard from 'expo-clipboard';
 import { ChamadoItem, OnuDetailInfo } from '../types/sgp';
 import { updateChamadoStatus, verificaAcessoCliente, calculateRealUptime, desconectarPppoe, updateContratoLocalizacao } from '../services/sgpApi';
 import { Feather } from '@expo/vector-icons';
@@ -455,6 +456,39 @@ export const OsDetailScreen: React.FC<Props> = ({ chamado, onBack, onCloseOsClic
               </Text>
             </View>
           </View>
+
+          {/* LOGIN PPPOE COM BOTÃO DE COPIAR */}
+          {servico?.servico_login ? (
+            <View style={styles.networkMetaRow}>
+              <Text style={styles.networkMetaLabel}>Login PPPoE:</Text>
+              <View style={styles.copyableWrapper}>
+                <Text style={[styles.networkMetaValue, { color: '#F8FAFC', fontWeight: '600' }]}>
+                  {servico.servico_login}
+                </Text>
+                <TouchableOpacity
+                  style={styles.copyBtn}
+                  onPress={async () => {
+                    const loginStr = servico.servico_login || '';
+                    await Clipboard.setStringAsync(loginStr);
+                    Alert.alert('Copiado!', `Login "${loginStr}" copiado para a área de transferência!`);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Feather name="copy" size={13} color="#38BDF8" />
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : null}
+
+          {/* SENHA PPPOE */}
+          {servico?.servico_password ? (
+            <View style={styles.networkMetaRow}>
+              <Text style={styles.networkMetaLabel}>Senha PPPoE:</Text>
+              <Text style={[styles.networkMetaValue, { color: '#F8FAFC', fontWeight: '600' }]}>
+                {servico.servico_password}
+              </Text>
+            </View>
+          ) : null}
 
           {onlineIpStr ? (
             <View style={styles.networkMetaRow}>
@@ -920,6 +954,21 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#94A3B8',
     fontFamily: 'monospace',
+  },
+  copyableWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  copyBtn: {
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    marginLeft: 8,
+    backgroundColor: 'rgba(56, 189, 248, 0.12)',
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(56, 189, 248, 0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   onuTriggerMinimalBtn: {
     flexDirection: 'row',
