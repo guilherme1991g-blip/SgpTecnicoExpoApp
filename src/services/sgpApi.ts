@@ -49,39 +49,52 @@ const parseSgpDateToTimestamp = (dateStr?: string): number => {
 };
 
 /**
- * Formata o Tempo Online ou Tempo Offline em Dias, Horas e Minutos
+ * Formata o Tempo Online ou Tempo Offline em Dias, Horas e Minutos com precisao
  */
 export const calculateRealUptime = (
   isOnline: boolean,
   dateStr?: string,
   statusData?: string,
-  osConteudo?: string
+  osCadastroData?: string
 ): string => {
-  let timestamp = 0;
-
-  // 1. PRIMEIRO: Tenta extrair a duracao descrita do extrato de trafego na O.S.
-  if (osConteudo && typeof osConteudo === 'string') {
-    const match = osConteudo.match(/(?:conectad[ao]|desconectad[ao]|sem conexão|caindo)\s+(?:a|há)?\s*(\d+)\s*dias?/i);
-    if (match && match[1]) {
-      const daysAgo = parseInt(match[1], 10);
-      timestamp = Date.now() - (daysAgo * 24 * 3600 * 1000 + 2 * 3600 * 1000 + 38 * 60 * 1000);
-    }
-  }
-
-  // 2. SEGUNDO: Se nao houver extrato no texto da O.S., usa statusData ou dateStr
-  if (!timestamp || timestamp === 0) {
-    const targetDate = statusData || dateStr;
-    timestamp = parseSgpDateToTimestamp(targetDate);
-  }
-
-  if (!timestamp || isNaN(timestamp) || timestamp === 0) {
-    return isOnline ? 'Online' : 'Desconectado';
+  if (!isOnline) {
+    return 'Desconectado';
   }
 
   const now = Date.now();
-  const diffMs = now - timestamp;
+
+  let oltTimestamp = parseSgpDateToTimestamp(dateStr);
+  let statusTimestamp = parseSgpDateToTimestamp(statusData);
+  let osTimestamp = parseSgpDateToTimestamp(osCadastroData);
+
+  // Se contrato_status_data for muito antigo (> 30 dias), usa a data da OLT (servico_onu_info_date) ou da OS
+  let targetTimestamp = 0;
+  if (statusTimestamp > 0) {
+    const ageDays = (now - statusTimestamp) / (1000 * 3600 * 24);
+    if (ageDays <= 30) {
+      targetTimestamp = statusTimestamp;
+    }
+  }
+
+  if (targetTimestamp === 0 && oltTimestamp > 0) {
+    targetTimestamp = oltTimestamp;
+  }
+
+  if (targetTimestamp === 0 && osTimestamp > 0) {
+    targetTimestamp = osTimestamp;
+  }
+
+  if (targetTimestamp === 0 && statusTimestamp > 0) {
+    targetTimestamp = statusTimestamp;
+  }
+
+  if (targetTimestamp === 0) {
+    return 'Online';
+  }
+
+  const diffMs = now - targetTimestamp;
   if (diffMs <= 0) {
-    return isOnline ? 'Online' : 'Desconectado recentemente';
+    return 'Conectado recentemente';
   }
 
   const diffSec = Math.floor(diffMs / 1000);
@@ -149,11 +162,11 @@ const mapOsToChamado = (item: any): ChamadoItem => {
     (item.servico_onu_info_date && item.servico_onu_info_date.trim().length > 0)
   );
 
-  // Mapeia o Tempo Ativo (Online Duration) ou Tempo Offline em Dias, Horas e Minutos
-  const onlineDurationRaw = item.servico_online_duration || item.online_duration || item.duration || '';
+  // Mapeia o Tempo Ativo (Online Duration) em Dias, Horas e Minutos usando leitura OLT / OS
   const oltDate = item.servico_onu_info_date || '';
   const statusData = item.contrato_status_data || '';
-  const realUptimeStr = calculateRealUptime(isOnline, onlineDurationRaw || oltDate, statusData, realProblemDescription);
+  const osCadastroData = item.os_data_cadastro || '';
+  const realUptimeStr = calculateRealUptime(isOnline, oltDate, statusData, osCadastroData);
 
   // Mapeia ou deriva o Phase State (Estado Operacional OLT GPON/EPON)
   let phaseState =
