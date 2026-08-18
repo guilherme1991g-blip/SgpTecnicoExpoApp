@@ -43,6 +43,10 @@ export const OsDetailScreen: React.FC<Props> = ({ chamado, onBack, onCloseOsClic
     ctoPorta: chamado.contrato_pop || '',
     templateOnu: servico?.onu_template || '',
     ultimaLeitura: servico?.onu_last_read || '',
+    distanciaFibra: servico?.onu_distance,
+    atenuacaoFibra: servico?.onu_attenuation,
+    causaUltimaQueda: servico?.onu_last_offline_cause,
+    dataUltimaQueda: servico?.onu_last_offline_time,
   });
 
   const [isChecking, setIsChecking] = useState(false);
@@ -51,6 +55,11 @@ export const OsDetailScreen: React.FC<Props> = ({ chamado, onBack, onCloseOsClic
   const [testResult, setTestResult] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [showOnuModal, setShowOnuModal] = useState(false);
+
+  // Executa verificação FTTX ao montar se dados disponíveis
+  React.useEffect(() => {
+    handleCheckSignal();
+  }, []);
 
   // Estado local para permitir atualizar instantaneamente as coordenadas do botao GPS
   const [currentCoords, setCurrentCoords] = useState<string | undefined>(
@@ -237,7 +246,11 @@ export const OsDetailScreen: React.FC<Props> = ({ chamado, onBack, onCloseOsClic
         sinalDownloadRx: newRx ?? prev.sinalDownloadRx,
         sinalUploadTx: newTx ?? prev.sinalUploadTx,
         sinalOltRx: newOltRx ?? prev.sinalOltRx,
-        tempoAtivo: result.onu_uptime ? calculateRealUptime(isOnline, result.onu_uptime) : prev.tempoAtivo,
+        tempoAtivo: result.onu_uptime || prev.tempoAtivo,
+        distanciaFibra: result.distancia_fibra || prev.distanciaFibra,
+        atenuacaoFibra: result.atenuacao_fibra || prev.atenuacaoFibra,
+        causaUltimaQueda: result.causa_ultima_queda || prev.causaUltimaQueda,
+        dataUltimaQueda: result.data_ultima_queda || prev.dataUltimaQueda,
       }));
 
       setTestResult(
@@ -679,6 +692,34 @@ export const OsDetailScreen: React.FC<Props> = ({ chamado, onBack, onCloseOsClic
                     <View style={styles.detailRowModal}>
                       <Text style={styles.detailLabelModal}>Conexão FTTH / OLT:</Text>
                       <Text style={styles.detailValueModal}>{onuInfo.ctoPorta}</Text>
+                    </View>
+                  ) : null}
+
+                  {onuInfo.distanciaFibra ? (
+                    <View style={styles.detailRowModal}>
+                      <Text style={styles.detailLabelModal}>Distância da Fibra:</Text>
+                      <Text style={[styles.detailValueModal, { color: '#10B981', fontWeight: 'bold' }]}>{onuInfo.distanciaFibra}</Text>
+                    </View>
+                  ) : null}
+
+                  {onuInfo.atenuacaoFibra ? (
+                    <View style={styles.detailRowModal}>
+                      <Text style={styles.detailLabelModal}>Atenuação da Fibra:</Text>
+                      <Text style={styles.detailValueModal}>{onuInfo.atenuacaoFibra}</Text>
+                    </View>
+                  ) : null}
+
+                  {onuInfo.causaUltimaQueda ? (
+                    <View style={styles.detailRowModal}>
+                      <Text style={styles.detailLabelModal}>Causa Última Queda:</Text>
+                      <Text style={[styles.detailValueModal, { color: '#EF4444' }]}>{onuInfo.causaUltimaQueda}</Text>
+                    </View>
+                  ) : null}
+
+                  {onuInfo.dataUltimaQueda ? (
+                    <View style={styles.detailRowModal}>
+                      <Text style={styles.detailLabelModal}>Data Última Queda:</Text>
+                      <Text style={styles.detailValueModal}>{onuInfo.dataUltimaQueda}</Text>
                     </View>
                   ) : null}
 

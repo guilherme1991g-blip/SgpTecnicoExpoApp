@@ -8,7 +8,7 @@ export interface ServicoItem {
   servico_online_ip?: string;
   servico_online_mac?: string;
 
-  // Diagnostico ONU / FTTH
+  // Diagnostico ONU / FTTH da OLT SGP
   onu_rx_power?: number;
   onu_tx_power?: number;
   onu_olt_rx_power?: number;
@@ -20,6 +20,13 @@ export interface ServicoItem {
   servico_onu_serial?: string;
   hasOnuData?: boolean;
   historico_conexoes?: HistoricoConexaoItem[];
+
+  // Dados FTTX avancados da OLT (GET /api/fttx/onu/{id}/info/)
+  onu_distance?: string;
+  onu_attenuation?: string;
+  onu_last_offline_cause?: string;
+  onu_last_offline_time?: string;
+  onu_online_duration?: string;
 }
 
 export interface HistoricoConexaoItem {
@@ -87,4 +94,8 @@ export interface OnuDetailInfo {
   ctoPorta?: string;
   templateOnu?: string;
   ultimaLeitura?: string;
+  distanciaFibra?: string;
+  atenuacaoFibra?: string;
+  causaUltimaQueda?: string;
+  dataUltimaQueda?: string;
 }

@@ -503,6 +503,86 @@ export const addAnexoBase64 = async (
   }
 };
 
+/**
+ * Busca informacoes detalhadas da ONU diretamente da API FTTX do SGP
+ * GET /api/fttx/onu/{IDENTIFICADOR_ONU}/info/?app=App&token={token}
+ */
+export const fetchOnuFttxInfo = async (onuIdOrSerial: string | number) => {
+  if (!onuIdOrSerial) return null;
+
+  try {
+    const response = await api.get(`/api/fttx/onu/${onuIdOrSerial}/info/`, {
+      params: {
+        app: SGP_CONFIG.appName,
+        token: SGP_CONFIG.token,
+      },
+    });
+
+    const rawText = response.data?.result || '';
+    if (!rawText) return null;
+
+    // Extrai sinais ópticos
+    const rxOnuMatch = rawText.match(/down\s+Tx\s*:[^\n]+Rx\s*:\s*(-?\d+\.\d+)/i);
+    const txOnuMatch = rawText.match(/up\s+Rx\s*:[^\n]+Tx\s*:\s*(-?\d+\.\d+)/i);
+    const rxOltMatch = rawText.match(/up\s+Rx\s*:[^\n]+Tx\s*:\s*(-?\d+\.\d+)/i);
+    const attMatch = rawText.match(/(\d+\.\d+)\s*\(dB\)/i);
+    const distMatch = rawText.match(/ONU Distance:\s*([^\n]+)/i);
+    const durMatch = rawText.match(/Online Duration:\s*([^\n]+)/i);
+    const phaseMatch = rawText.match(/Phase state:\s*([^\n]+)/i);
+
+    // Tabela de histórico de quedas e causas
+    let lastOfflineCause = '';
+    let lastOfflineTime = '';
+    const lines = rawText.split('\n');
+    for (const line of lines) {
+      const m = line.match(/^\s*(\d+)\s+(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s+(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s+([A-Za-z0-9_]+)/);
+      if (m) {
+        lastOfflineTime = m[3];
+        lastOfflineCause = m[4];
+      }
+    }
+
+    let causeFormatted = lastOfflineCause;
+    if (lastOfflineCause === 'DyingGasp') {
+      causeFormatted = 'DyingGasp (Sem Energia / Desligada)';
+    } else if (lastOfflineCause === 'LOS' || lastOfflineCause === 'LOSi') {
+      causeFormatted = 'LOS (Rompimento de Fibra / Sinal Baixo)';
+    }
+
+    let onlineDurFormatted = durMatch ? durMatch[1].trim() : '';
+    if (onlineDurFormatted) {
+      const hMatch = onlineDurFormatted.match(/(\d+)h\s*(\d+)m\s*(\d+)s/);
+      if (hMatch) {
+        const totalHours = parseInt(hMatch[1], 10);
+        const mins = parseInt(hMatch[2], 10);
+        const days = Math.floor(totalHours / 24);
+        const remHours = totalHours % 24;
+
+        const parts = [];
+        if (days > 0) parts.push(`${days} dia${days > 1 ? 's' : ''}`);
+        if (remHours > 0 || days > 0) parts.push(`${remHours} hr${remHours > 1 ? 's' : ''}`);
+        parts.push(`${mins} min`);
+        onlineDurFormatted = parts.join(', ');
+      }
+    }
+
+    return {
+      onu_rx_power: rxOnuMatch ? parseFloat(rxOnuMatch[1]) : undefined,
+      onu_tx_power: txOnuMatch ? parseFloat(txOnuMatch[1]) : undefined,
+      onu_olt_rx_power: rxOltMatch ? parseFloat(rxOltMatch[1]) : undefined,
+      onu_attenuation: attMatch ? `${attMatch[1]} dB` : undefined,
+      onu_distance: distMatch ? distMatch[1].trim() : undefined,
+      onu_online_duration: onlineDurFormatted,
+      onu_phase_state: phaseMatch ? phaseMatch[1].trim() : undefined,
+      onu_last_offline_cause: causeFormatted,
+      onu_last_offline_time: lastOfflineTime,
+    };
+  } catch (error) {
+    console.warn('Erro ao consultar /api/fttx/onu/info/:', error);
+    return null;
+  }
+};
+
 export const verificaAcessoCliente = async (contratoId: number, osId?: number) => {
   try {
     const list = await fetchOrdensDeServicoFromSgp(true, false);
@@ -512,16 +592,34 @@ export const verificaAcessoCliente = async (contratoId: number, osId?: number) =
 
     if (item && item.servicos && item.servicos.length > 0) {
       const s = item.servicos[0];
+      const onuIdent = s.servico_onu_serial || s.servico_mac;
+
+      // Busca dados FTTX da OLT se identificador disponível
+      let fttxData = null;
+      if (onuIdent) {
+        fttxData = await fetchOnuFttxInfo(onuIdent);
+      }
+
+      const rxFinal = fttxData?.onu_rx_power ?? s.onu_rx_power;
+      const txFinal = fttxData?.onu_tx_power ?? s.onu_tx_power;
+      const oltRxFinal = fttxData?.onu_olt_rx_power ?? s.onu_olt_rx_power;
+      const uptimeFinal = fttxData?.onu_online_duration || s.onu_uptime;
+      const phaseFinal = fttxData?.onu_phase_state || s.onu_phase_state;
+
       return {
         status: s.servico_online ? 1 : 0,
-        onu_rx: s.onu_rx_power,
-        onu_tx: s.onu_tx_power,
-        onu_olt_rx: s.onu_olt_rx_power,
-        onu_uptime: s.onu_uptime,
-        phase_state: s.onu_phase_state,
-        serial: s.servico_onu_serial || s.servico_mac,
+        onu_rx: rxFinal,
+        onu_tx: txFinal,
+        onu_olt_rx: oltRxFinal,
+        onu_uptime: uptimeFinal,
+        phase_state: phaseFinal,
+        serial: onuIdent,
         template: s.onu_template,
-        msg: s.servico_online ? 'Sinal e Acesso Verificados no SGP' : 'Desconectado no SGP',
+        distancia_fibra: fttxData?.onu_distance,
+        atenuacao_fibra: fttxData?.onu_attenuation,
+        causa_ultima_queda: fttxData?.onu_last_offline_cause,
+        data_ultima_queda: fttxData?.onu_last_offline_time,
+        msg: s.servico_online ? 'Sinal e Acesso Verificados na OLT / SGP' : 'Desconectado no SGP',
       };
     }
 
