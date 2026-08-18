@@ -93,6 +93,7 @@ export const OsDetailScreen: React.FC<Props> = ({ chamado, onBack, onCloseOsClic
   const displayRx = onuInfo.sinalDownloadRx !== undefined && onuInfo.sinalDownloadRx !== 0 ? onuInfo.sinalDownloadRx : rxValue;
   const displayTx = onuInfo.sinalUploadTx !== undefined && onuInfo.sinalUploadTx !== 0 ? onuInfo.sinalUploadTx : txValue;
   const displayOltRx = onuInfo.sinalOltRx !== undefined && onuInfo.sinalOltRx !== 0 ? onuInfo.sinalOltRx : oltRxValue;
+  const displayUptime = onuInfo.tempoAtivo || servico?.onu_uptime || (isOnlineSgp ? 'Online' : 'Desconectado');
 
   // PRIORIZA O PROBLEMA REPORTADO REAL DO CLIENTE (os_conteudo)
   const realDescriptionText =
@@ -521,11 +522,11 @@ export const OsDetailScreen: React.FC<Props> = ({ chamado, onBack, onCloseOsClic
           ) : null}
 
           {/* TEMPO ONLINE / OFFLINE PPPOE */}
-          {servico?.onu_uptime || onuInfo.tempoAtivo ? (
+          {displayUptime ? (
             <View style={styles.networkMetaRow}>
               <Text style={styles.networkMetaLabel}>{isOnlineSgp ? 'Tempo Online:' : 'Tempo Offline:'}</Text>
               <Text style={[styles.networkMetaValue, { color: isOnlineSgp ? '#10B981' : '#EF4444', fontWeight: 'bold' }]}>
-                {servico?.onu_uptime || onuInfo.tempoAtivo}
+                {displayUptime}
               </Text>
             </View>
           ) : null}
