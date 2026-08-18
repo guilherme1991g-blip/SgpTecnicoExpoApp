@@ -55,6 +55,7 @@ export const OsDetailScreen: React.FC<Props> = ({ chamado, onBack, onCloseOsClic
   const [testResult, setTestResult] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [showOnuModal, setShowOnuModal] = useState(false);
+  const [showLogsSection, setShowLogsSection] = useState(false);
 
   // Executa verificação FTTX ao montar se dados disponíveis
   React.useEffect(() => {
@@ -251,6 +252,7 @@ export const OsDetailScreen: React.FC<Props> = ({ chamado, onBack, onCloseOsClic
         atenuacaoFibra: result.atenuacao_fibra || prev.atenuacaoFibra,
         causaUltimaQueda: result.causa_ultima_queda || prev.causaUltimaQueda,
         dataUltimaQueda: result.data_ultima_queda || prev.dataUltimaQueda,
+        logsOnu: result.logs_onu || prev.logsOnu,
       }));
 
       setTestResult(
@@ -670,27 +672,29 @@ export const OsDetailScreen: React.FC<Props> = ({ chamado, onBack, onCloseOsClic
                 {/* LISTA DE DETALHES ONU / OLT */}
                 <View style={styles.detailsListModal}>
                   <View style={styles.detailRowModal}>
-                    <Text style={styles.detailLabelModal}>Phase State (GPON):</Text>
-                    <Text style={[styles.detailValueModal, { color: '#38BDF8' }]}>{onuInfo.phaseState || 'N/A'}</Text>
+                    <Text style={styles.detailLabelModal}>Estado da Conexão:</Text>
+                    <Text style={[styles.detailValueModal, { color: '#38BDF8', fontWeight: 'bold' }]}>
+                      {onuInfo.phaseState || 'Sem Dados'}
+                    </Text>
                   </View>
 
                   {displayOltRx !== undefined && displayOltRx !== 0 ? (
                     <View style={styles.detailRowModal}>
-                      <Text style={styles.detailLabelModal}>Sinal OLT RX:</Text>
+                      <Text style={styles.detailLabelModal}>Sinal da OLT (Recepção):</Text>
                       <Text style={styles.detailValueModal}>{displayOltRx} dBm</Text>
                     </View>
                   ) : null}
 
                   {onuInfo.serialOnu ? (
                     <View style={styles.detailRowModal}>
-                      <Text style={styles.detailLabelModal}>Serial / MAC ONU:</Text>
+                      <Text style={styles.detailLabelModal}>Número de Série (MAC):</Text>
                       <Text style={styles.detailValueModal}>{onuInfo.serialOnu}</Text>
                     </View>
                   ) : null}
 
                   {onuInfo.ctoPorta ? (
                     <View style={styles.detailRowModal}>
-                      <Text style={styles.detailLabelModal}>Conexão FTTH / OLT:</Text>
+                      <Text style={styles.detailLabelModal}>Porta da OLT / POP:</Text>
                       <Text style={styles.detailValueModal}>{onuInfo.ctoPorta}</Text>
                     </View>
                   ) : null}
@@ -704,38 +708,72 @@ export const OsDetailScreen: React.FC<Props> = ({ chamado, onBack, onCloseOsClic
 
                   {onuInfo.atenuacaoFibra ? (
                     <View style={styles.detailRowModal}>
-                      <Text style={styles.detailLabelModal}>Atenuação da Fibra:</Text>
+                      <Text style={styles.detailLabelModal}>Atenuação do Sinal:</Text>
                       <Text style={styles.detailValueModal}>{onuInfo.atenuacaoFibra}</Text>
                     </View>
                   ) : null}
 
                   {onuInfo.causaUltimaQueda ? (
                     <View style={styles.detailRowModal}>
-                      <Text style={styles.detailLabelModal}>Causa Última Queda:</Text>
+                      <Text style={styles.detailLabelModal}>Causa da Última Queda:</Text>
                       <Text style={[styles.detailValueModal, { color: '#EF4444' }]}>{onuInfo.causaUltimaQueda}</Text>
                     </View>
                   ) : null}
 
                   {onuInfo.dataUltimaQueda ? (
                     <View style={styles.detailRowModal}>
-                      <Text style={styles.detailLabelModal}>Data Última Queda:</Text>
+                      <Text style={styles.detailLabelModal}>Data da Última Queda:</Text>
                       <Text style={styles.detailValueModal}>{onuInfo.dataUltimaQueda}</Text>
                     </View>
                   ) : null}
 
                   {onuInfo.templateOnu ? (
                     <View style={styles.detailRowModal}>
-                      <Text style={styles.detailLabelModal}>Modelo / Template:</Text>
+                      <Text style={styles.detailLabelModal}>Modelo da ONU:</Text>
                       <Text style={styles.detailValueModal}>{onuInfo.templateOnu}</Text>
                     </View>
                   ) : null}
 
                   {onuInfo.ultimaLeitura ? (
                     <View style={styles.detailRowModal}>
-                      <Text style={styles.detailLabelModal}>Última Leitura:</Text>
+                      <Text style={styles.detailLabelModal}>Última Verificação:</Text>
                       <Text style={styles.detailValueModal}>{onuInfo.ultimaLeitura}</Text>
                     </View>
                   ) : null}
+
+                  {/* BOTÃO E SEÇÃO LOG DA ONU */}
+                  <TouchableOpacity
+                    style={styles.onuLogToggleBtn}
+                    onPress={() => setShowLogsSection(!showLogsSection)}
+                    activeOpacity={0.8}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                      <Feather name="list" size={15} color="#38BDF8" style={{ marginRight: 8 }} />
+                      <Text style={styles.onuLogToggleBtnText}>Log da ONU (Últimas 5 Quedas)</Text>
+                    </View>
+                    <Feather name={showLogsSection ? 'chevron-up' : 'chevron-down'} size={18} color="#94A3B8" />
+                  </TouchableOpacity>
+
+                  {showLogsSection && (
+                    <View style={styles.logsBoxContainer}>
+                      {onuInfo.logsOnu && onuInfo.logsOnu.length > 0 ? (
+                        onuInfo.logsOnu.map((logItem, idx) => (
+                          <View key={idx} style={styles.logCardItem}>
+                            <View style={styles.logHeaderRow}>
+                              <Text style={styles.logIndexText}>Registro #{idx + 1}</Text>
+                              <Text style={[styles.logCauseText, { color: logItem.causa.includes('Energia') ? '#F59E0B' : '#EF4444' }]}>
+                                {logItem.causa}
+                              </Text>
+                            </View>
+                            <Text style={styles.logDetailText}>Queda / Desconexão: {logItem.fim}</Text>
+                            <Text style={styles.logDetailText}>Reautenticação: {logItem.inicio}</Text>
+                          </View>
+                        ))
+                      ) : (
+                        <Text style={styles.emptyLogsText}>Nenhum registro de log encontrado na OLT.</Text>
+                      )}
+                    </View>
+                  )}
                 </View>
 
                 <TouchableOpacity
@@ -1193,6 +1231,65 @@ const styles = StyleSheet.create({
     color: '#F8FAFC',
     fontSize: 12,
     fontWeight: '600',
+  },
+  onuLogToggleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#0F172A',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: '#1E293B',
+  },
+  onuLogToggleBtnText: {
+    color: '#38BDF8',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  logsBoxContainer: {
+    marginTop: 8,
+    backgroundColor: '#0B0F17',
+    borderRadius: 8,
+    padding: 8,
+    borderWidth: 1,
+    borderColor: '#1E293B',
+  },
+  logCardItem: {
+    backgroundColor: '#161F30',
+    borderRadius: 6,
+    padding: 8,
+    marginBottom: 6,
+    borderLeftWidth: 3,
+    borderLeftColor: '#38BDF8',
+  },
+  logHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  logIndexText: {
+    color: '#64748B',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  logCauseText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  logDetailText: {
+    color: '#94A3B8',
+    fontSize: 11,
+    fontFamily: 'monospace',
+  },
+  emptyLogsText: {
+    color: '#64748B',
+    fontSize: 11,
+    textAlign: 'center',
+    paddingVertical: 8,
   },
   refreshSignalBtnModal: {
     flexDirection: 'row',

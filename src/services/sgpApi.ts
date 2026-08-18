@@ -533,20 +533,55 @@ export const fetchOnuFttxInfo = async (onuIdOrSerial: string | number) => {
     // Tabela de histórico de quedas e causas
     let lastOfflineCause = '';
     let lastOfflineTime = '';
+    const logsList: { id: string; inicio: string; fim: string; causa: string }[] = [];
     const lines = rawText.split('\n');
+
     for (const line of lines) {
       const m = line.match(/^\s*(\d+)\s+(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s+(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s+([A-Za-z0-9_]+)/);
       if (m) {
-        lastOfflineTime = m[3];
-        lastOfflineCause = m[4];
+        const id = m[1];
+        const inicio = m[2];
+        const fimRaw = m[3];
+        const causeRaw = m[4];
+
+        lastOfflineTime = fimRaw;
+        lastOfflineCause = causeRaw;
+
+        let causePt = causeRaw;
+        if (causeRaw === 'DyingGasp') {
+          causePt = 'Falta de Energia (Desligada no Disjuntor)';
+        } else if (causeRaw === 'LOS' || causeRaw === 'LOSi') {
+          causePt = 'Sinal Baixo / Rompimento de Fibra';
+        } else if (causeRaw === 'WireDown') {
+          causePt = 'Cabo Desconectado';
+        } else if (causeRaw === 'Command' || causeRaw === 'Manual') {
+          causePt = 'Comando de Reinício / Rebloco';
+        }
+
+        const fimFormatted = fimRaw.startsWith('0000') ? 'Conectado (Ativo)' : fimRaw;
+        logsList.push({ id, inicio, fim: fimFormatted, causa: causePt });
       }
     }
 
+    // Pega os ultimos 5 logs (mais recentes primeiro)
+    const last5Logs = logsList.slice(-5).reverse();
+
     let causeFormatted = lastOfflineCause;
     if (lastOfflineCause === 'DyingGasp') {
-      causeFormatted = 'DyingGasp (Sem Energia / Desligada)';
+      causeFormatted = 'Falta de Energia (Desligada no Disjuntor)';
     } else if (lastOfflineCause === 'LOS' || lastOfflineCause === 'LOSi') {
-      causeFormatted = 'LOS (Rompimento de Fibra / Sinal Baixo)';
+      causeFormatted = 'Sinal Baixo / Rompimento de Fibra';
+    }
+
+    let phasePt = phaseMatch ? phaseMatch[1].trim() : '';
+    if (phasePt.toLowerCase().includes('working')) {
+      phasePt = 'Funcionando Perfeitamente (Online)';
+    } else if (phasePt.toLowerCase().includes('los')) {
+      phasePt = 'Sinal Perdido (Fibra Rompida)';
+    } else if (phasePt.toLowerCase().includes('dying')) {
+      phasePt = 'Desconectado (Sem Energia)';
+    } else if (phasePt.toLowerCase().includes('fail')) {
+      phasePt = 'Falha de Autenticação / Configuração';
     }
 
     let onlineDurFormatted = durMatch ? durMatch[1].trim() : '';
@@ -573,9 +608,10 @@ export const fetchOnuFttxInfo = async (onuIdOrSerial: string | number) => {
       onu_attenuation: attMatch ? `${attMatch[1]} dB` : undefined,
       onu_distance: distMatch ? distMatch[1].trim() : undefined,
       onu_online_duration: onlineDurFormatted,
-      onu_phase_state: phaseMatch ? phaseMatch[1].trim() : undefined,
+      onu_phase_state: phasePt,
       onu_last_offline_cause: causeFormatted,
-      onu_last_offline_time: lastOfflineTime,
+      onu_last_offline_time: lastOfflineTime.startsWith('0000') ? 'Nenhum' : lastOfflineTime,
+      logsOnu: last5Logs,
     };
   } catch (error) {
     console.warn('Erro ao consultar /api/fttx/onu/info/:', error);
@@ -619,6 +655,7 @@ export const verificaAcessoCliente = async (contratoId: number, osId?: number) =
         atenuacao_fibra: fttxData?.onu_attenuation,
         causa_ultima_queda: fttxData?.onu_last_offline_cause,
         data_ultima_queda: fttxData?.onu_last_offline_time,
+        logs_onu: fttxData?.logsOnu,
         msg: s.servico_online ? 'Sinal e Acesso Verificados na OLT / SGP' : 'Desconectado no SGP',
       };
     }

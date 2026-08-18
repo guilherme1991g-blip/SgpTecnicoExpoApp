@@ -27,6 +27,14 @@ export interface ServicoItem {
   onu_last_offline_cause?: string;
   onu_last_offline_time?: string;
   onu_online_duration?: string;
+  logsOnu?: OnuLogItem[];
+}
+
+export interface OnuLogItem {
+  id: string;
+  inicio: string;
+  fim: string;
+  causa: string;
 }
 
 export interface HistoricoConexaoItem {
@@ -98,4 +106,5 @@ export interface OnuDetailInfo {
   atenuacaoFibra?: string;
   causaUltimaQueda?: string;
   dataUltimaQueda?: string;
+  logsOnu?: OnuLogItem[];
 }
