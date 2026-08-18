@@ -58,7 +58,7 @@ export default function App() {
   return (
     <ErrorBoundary>
       <View style={styles.container}>
-        <StatusBar barStyle="light-content" backgroundColor="#0B0F17" />
+        <StatusBar barStyle="light-content" backgroundColor="#0B0F17" translucent={true} />
         {currentScreen === 'Login' && (
           <LoginScreen onLoginSuccess={() => setCurrentScreen('OsList')} />
         )}

@@ -6,6 +6,8 @@ import {
   StyleSheet,
   ActivityIndicator,
   SafeAreaView,
+  Platform,
+  StatusBar,
 } from 'react-native';
 import { fetchTiposOcorrencia } from '../services/sgpApi';
 import { Feather } from '@expo/vector-icons';
@@ -63,6 +65,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#0B0F17',
+    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight || 0 : 0,
   },
   content: {
     flex: 1,

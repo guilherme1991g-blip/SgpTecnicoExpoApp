@@ -10,6 +10,8 @@ import {
   SafeAreaView,
   Image,
   Alert,
+  Platform,
+  StatusBar,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { updateChamadoStatus, addAnexoBase64 } from '../services/sgpApi';
@@ -271,7 +273,8 @@ export const OsCloseScreen: React.FC<Props> = ({ osId, onBack, onFinishSuccess }
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#121212',
+    backgroundColor: '#0B0F17',
+    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight || 0 : 0,
   },
   header: {
     flexDirection: 'row',
