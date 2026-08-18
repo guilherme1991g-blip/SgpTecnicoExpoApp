@@ -162,11 +162,18 @@ const mapOsToChamado = (item: any): ChamadoItem => {
     (item.servico_onu_info_date && item.servico_onu_info_date.trim().length > 0)
   );
 
-  // Mapeia o Tempo Ativo (Online Duration) em Dias, Horas e Minutos usando leitura OLT / OS
+  // Mapeia o Tempo Ativo (Online Duration) em Dias, Horas e Minutos usando leitura OLT / OS / Cache FTTX
   const oltDate = item.servico_onu_info_date || '';
   const statusData = item.contrato_status_data || '';
   const osCadastroData = item.os_data_cadastro || '';
-  const realUptimeStr = calculateRealUptime(isOnline, oltDate, statusData, osCadastroData);
+
+  let realUptimeStr = '';
+  if (serial && fttxCache.has(serial)) {
+    realUptimeStr = fttxCache.get(serial)?.data?.onu_online_duration || '';
+  }
+  if (!realUptimeStr) {
+    realUptimeStr = calculateRealUptime(isOnline, oltDate, statusData, osCadastroData);
+  }
 
   // Mapeia ou deriva o Phase State (Estado Operacional OLT GPON/EPON)
   let phaseState =
@@ -306,7 +313,19 @@ export const fetchOrdensDeServicoFromSgp = async (statusAberto: boolean = false,
     });
 
     if (Array.isArray(response.data)) {
-      return response.data.map(mapOsToChamado);
+      const items = response.data;
+
+      // Pre-carrega informações FTTX em paralelo para carregamento instantâneo do Tempo Online
+      await Promise.allSettled(
+        items.map(async (it) => {
+          const serial = it.servico_onu_serial || it.servico_mac;
+          if (serial) {
+            await fetchOnuFttxInfo(serial).catch(() => {});
+          }
+        })
+      );
+
+      return items.map(mapOsToChamado);
     }
     return [];
   } catch (error) {
@@ -503,15 +522,23 @@ export const addAnexoBase64 = async (
   }
 };
 
+const fttxCache = new Map<string, { data: any; timestamp: number }>();
+
 /**
  * Busca informacoes detalhadas da ONU diretamente da API FTTX do SGP
  * GET /api/fttx/onu/{IDENTIFICADOR_ONU}/info/?app=App&token={token}
  */
-export const fetchOnuFttxInfo = async (onuIdOrSerial: string | number) => {
+export const fetchOnuFttxInfo = async (onuIdOrSerial: string | number, forceRefresh: boolean = false) => {
   if (!onuIdOrSerial) return null;
+  const key = String(onuIdOrSerial).trim();
+
+  const cached = fttxCache.get(key);
+  if (!forceRefresh && cached && (Date.now() - cached.timestamp < 10 * 60 * 1000)) {
+    return cached.data;
+  }
 
   try {
-    const response = await api.get(`/api/fttx/onu/${onuIdOrSerial}/info/`, {
+    const response = await api.get(`/api/fttx/onu/${key}/info/`, {
       params: {
         app: SGP_CONFIG.appName,
         token: SGP_CONFIG.token,
@@ -610,7 +637,7 @@ export const fetchOnuFttxInfo = async (onuIdOrSerial: string | number) => {
       phasePt = 'Falha de Autenticação / Configuração';
     }
 
-    return {
+    const resultObj = {
       onu_rx_power: rxOnuMatch ? parseFloat(rxOnuMatch[1]) : undefined,
       onu_tx_power: txOnuMatch ? parseFloat(txOnuMatch[1]) : undefined,
       onu_olt_rx_power: rxOltMatch ? parseFloat(rxOltMatch[1]) : undefined,
@@ -622,6 +649,9 @@ export const fetchOnuFttxInfo = async (onuIdOrSerial: string | number) => {
       onu_last_offline_time: lastOfflineTime.startsWith('0000') ? 'Nenhum' : lastOfflineTime,
       logsOnu: last5Logs,
     };
+
+    fttxCache.set(key, { data: resultObj, timestamp: Date.now() });
+    return resultObj;
   } catch (error) {
     console.warn('Erro ao consultar /api/fttx/onu/info/:', error);
     return null;
