@@ -7,6 +7,7 @@ import { LoginScreen } from './src/screens/LoginScreen';
 import { OsListScreen } from './src/screens/OsListScreen';
 import { OsDetailScreen } from './src/screens/OsDetailScreen';
 import { OsCloseScreen } from './src/screens/OsCloseScreen';
+import { ClientSearchScreen } from './src/screens/ClientSearchScreen';
 import { ChamadoItem } from './src/types/sgp';
 
 export type RootStackParamList = {
@@ -14,6 +15,7 @@ export type RootStackParamList = {
   OsList: undefined;
   OsDetail: { chamado: ChamadoItem };
   OsClose: { osId: number };
+  ClientSearch: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -88,7 +90,16 @@ export default function App() {
               {({ navigation }) => (
                 <OsListScreen
                   onOsClick={(chamado) => navigation.navigate('OsDetail', { chamado })}
+                  onOpenClientSearch={() => navigation.navigate('ClientSearch')}
                   onLogout={() => navigation.replace('Login')}
+                />
+              )}
+            </Stack.Screen>
+
+            <Stack.Screen name="ClientSearch">
+              {({ navigation }) => (
+                <ClientSearchScreen
+                  onBackToOs={() => navigation.goBack()}
                 />
               )}
             </Stack.Screen>

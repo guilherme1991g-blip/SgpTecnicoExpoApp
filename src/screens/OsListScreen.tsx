@@ -18,6 +18,7 @@ import { Feather } from '@expo/vector-icons';
 
 interface Props {
   onOsClick: (chamado: ChamadoItem) => void;
+  onOpenClientSearch: () => void;
   onLogout: () => void;
 }
 
@@ -78,7 +79,7 @@ const formatDateHeader = (
   return { key, dayName, dayNum, monthStr, dayMonthStr };
 };
 
-export const OsListScreen: React.FC<Props> = ({ onOsClick, onLogout }) => {
+export const OsListScreen: React.FC<Props> = ({ onOsClick, onOpenClientSearch, onLogout }) => {
   const [selectedTab, setSelectedTab] = useState<number>(0); // 0=Abertas (Todas), 1=Em Execução
   const [selectedDateFilter, setSelectedDateFilter] = useState<string>('TODAS'); // 'TODAS' ou data 'DD/MM/YYYY'
   const [searchQuery, setSearchQuery] = useState('');
@@ -221,6 +222,9 @@ export const OsListScreen: React.FC<Props> = ({ onOsClick, onLogout }) => {
         </View>
 
         <View style={styles.headerActions}>
+          <TouchableOpacity onPress={onOpenClientSearch} style={styles.iconBtn} activeOpacity={0.7}>
+            <Feather name="users" size={18} color="#38BDF8" />
+          </TouchableOpacity>
           <TouchableOpacity onPress={loadChamados} style={styles.iconBtn} activeOpacity={0.7}>
             <Feather name="refresh-cw" size={18} color="#38BDF8" />
           </TouchableOpacity>

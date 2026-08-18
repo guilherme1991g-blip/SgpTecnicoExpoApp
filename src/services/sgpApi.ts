@@ -705,3 +705,64 @@ export const verificaAcessoCliente = async (contratoId: number, osId?: number) =
     return { status: 0, msg: 'Erro de comunicação no SGP' };
   }
 };
+
+export interface UraClienteEndereco {
+  logradouro?: string;
+  numero?: string;
+  bairro?: string;
+  cidade?: string;
+  uf?: string;
+  cep?: string;
+  complemento?: string;
+  latitude?: string;
+  longitude?: string;
+}
+
+export interface UraClienteContrato {
+  id: number;
+  status?: string;
+  plano?: string;
+  vencimento?: number;
+  dataCadastro?: string;
+}
+
+export interface UraClienteItem {
+  id: number;
+  nome: string;
+  tipo?: string;
+  cpfcnpj?: string;
+  dataCadastro?: string;
+  endereco?: UraClienteEndereco;
+  contratos?: UraClienteContrato[];
+  contatos?: {
+    celulares?: string[];
+    telefones?: string[];
+    emails?: string[];
+  };
+}
+
+/**
+ * Busca clientes no SGP via POST /api/ura/clientes/ por nome
+ */
+export const searchClientesSgp = async (nomeQuery: string): Promise<UraClienteItem[]> => {
+  const query = nomeQuery.trim();
+  if (!query) return [];
+
+  try {
+    const response = await api.post('/api/ura/clientes/', {
+      app: SGP_CONFIG.appName,
+      token: SGP_CONFIG.token,
+      cliente_nome: query,
+    }, {
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+    if (response.data && Array.isArray(response.data.clientes)) {
+      return response.data.clientes;
+    }
+    return [];
+  } catch (error) {
+    console.warn('Erro ao buscar clientes no SGP /api/ura/clientes/:', error);
+    return [];
+  }
+};
