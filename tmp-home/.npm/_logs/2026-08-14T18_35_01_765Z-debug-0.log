@@ -1,0 +1,18 @@
+0 verbose cli /opt/homebrew/Cellar/node/26.5.0_1/bin/node /opt/homebrew/lib/node_modules/npm/bin/npm-cli.js
+1 info using npm@11.17.0
+2 info using node@v26.5.0
+3 silly config load:file:/opt/homebrew/lib/node_modules/npm/npmrc
+4 silly config load:file:/Users/guilhermesilva/.gemini/antigravity/scratch/SgpTecnicoExpoApp/.npmrc
+5 silly config load:file:/Users/guilhermesilva/.gemini/antigravity/scratch/SgpTecnicoExpoApp/tmp-home/.npmrc
+6 silly config load:file:/opt/homebrew/etc/npmrc
+7 verbose title npm exec expo install --fix
+8 verbose argv "exec" "--" "expo" "install" "--fix"
+9 verbose logfile logs-max:10 dir:/Users/guilhermesilva/.gemini/antigravity/scratch/SgpTecnicoExpoApp/tmp-home/.npm/_logs/2026-08-14T18_35_01_765Z-
+10 verbose logfile /Users/guilhermesilva/.gemini/antigravity/scratch/SgpTecnicoExpoApp/tmp-home/.npm/_logs/2026-08-14T18_35_01_765Z-debug-0.log
+11 silly logfile done cleaning log files
+12 verbose cwd /Users/guilhermesilva/.gemini/antigravity/scratch/SgpTecnicoExpoApp
+13 verbose os Darwin 25.2.0
+14 verbose node v26.5.0
+15 verbose npm  v11.17.0
+16 verbose exit 1
+17 verbose code 1

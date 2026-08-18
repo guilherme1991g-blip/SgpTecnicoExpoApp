@@ -1,0 +1,108 @@
+0 verbose cli /opt/homebrew/Cellar/node/26.5.0_1/bin/node /opt/homebrew/bin/npm
+1 info using npm@11.17.0
+2 info using node@v26.5.0
+3 silly config load:file:/opt/homebrew/lib/node_modules/npm/npmrc
+4 silly config load:file:/Users/guilhermesilva/.gemini/antigravity/scratch/SgpTecnicoExpoApp/.npmrc
+5 silly config load:file:/Users/guilhermesilva/.npmrc
+6 silly config load:file:/opt/homebrew/etc/npmrc
+7 verbose title npm install
+8 verbose argv "install" "--cache" "./tmp-cache"
+9 verbose logfile logs-max:10 dir:/Users/guilhermesilva/.gemini/antigravity/scratch/SgpTecnicoExpoApp/tmp-cache/_logs/2026-08-14T18_24_02_990Z-
+10 verbose logfile /Users/guilhermesilva/.gemini/antigravity/scratch/SgpTecnicoExpoApp/tmp-cache/_logs/2026-08-14T18_24_02_990Z-debug-0.log
+11 silly logfile done cleaning log files
+12 silly packumentCache heap:2248146944 maxSize:562036736 maxEntrySize:281018368
+13 silly idealTree buildDeps
+14 silly fetch manifest expo@~54.0.0
+15 silly packumentCache full:https://registry.npmjs.org/expo cache-miss
+16 http fetch GET 200 https://registry.npmjs.org/expo 442ms (cache revalidated)
+17 silly packumentCache full:https://registry.npmjs.org/expo set size:4015711 disposed:false
+18 silly fetch manifest @expo/dom-webview@*
+19 silly packumentCache full:https://registry.npmjs.org/@expo%2fdom-webview cache-miss
+20 http fetch GET 200 https://registry.npmjs.org/@expo%2fdom-webview 88ms (cache miss)
+21 silly packumentCache full:https://registry.npmjs.org/@expo%2fdom-webview set size:undefined disposed:false
+22 silly fetch manifest react@18.3.1
+23 silly packumentCache full:https://registry.npmjs.org/react cache-miss
+24 http fetch GET 200 https://registry.npmjs.org/react 309ms (cache revalidated)
+25 silly packumentCache full:https://registry.npmjs.org/react set size:6897881 disposed:false
+26 silly fetch manifest react-native@0.79.2
+27 silly packumentCache full:https://registry.npmjs.org/react-native cache-miss
+28 http fetch GET 200 https://registry.npmjs.org/react-native 86ms (cache revalidated)
+29 silly packumentCache full:https://registry.npmjs.org/react-native set size:15659830 disposed:false
+30 silly fetch manifest @types/react@~18.3.12
+31 silly packumentCache full:https://registry.npmjs.org/@types%2freact cache-miss
+32 http fetch GET 200 https://registry.npmjs.org/@types%2freact 305ms (cache revalidated)
+33 silly packumentCache full:https://registry.npmjs.org/@types%2freact set size:2637439 disposed:false
+34 silly fetch manifest @types/react@^19.0.0
+35 silly packumentCache full:https://registry.npmjs.org/@types%2freact cache-miss
+36 http cache https://registry.npmjs.org/@types%2freact 7ms (cache hit)
+37 silly packumentCache full:https://registry.npmjs.org/@types%2freact set size:2637439 disposed:false
+38 silly fetch manifest react@^19.0.0
+39 silly packumentCache full:https://registry.npmjs.org/react cache-miss
+40 http cache https://registry.npmjs.org/react 11ms (cache hit)
+41 silly packumentCache full:https://registry.npmjs.org/react set size:6897881 disposed:false
+42 silly fetch manifest @expo/metro-runtime@*
+43 silly packumentCache full:https://registry.npmjs.org/@expo%2fmetro-runtime cache-miss
+44 http fetch GET 200 https://registry.npmjs.org/@expo%2fmetro-runtime 85ms (cache revalidated)
+45 silly packumentCache full:https://registry.npmjs.org/@expo%2fmetro-runtime set size:799963 disposed:false
+46 silly fetch manifest react-dom@*
+47 silly packumentCache full:https://registry.npmjs.org/react-dom cache-miss
+48 http fetch GET 200 https://registry.npmjs.org/react-dom 84ms (cache revalidated)
+49 silly packumentCache full:https://registry.npmjs.org/react-dom set size:9267760 disposed:false
+50 silly fetch manifest react@^19.2.8
+51 silly packumentCache full:https://registry.npmjs.org/react cache-miss
+52 http cache https://registry.npmjs.org/react 7ms (cache hit)
+53 silly packumentCache full:https://registry.npmjs.org/react set size:6897881 disposed:false
+54 silly fetch manifest react-native-webview@*
+55 silly packumentCache full:https://registry.npmjs.org/react-native-webview cache-miss
+56 http fetch GET 200 https://registry.npmjs.org/react-native-webview 150ms (cache revalidated)
+57 silly packumentCache full:https://registry.npmjs.org/react-native-webview set size:1379763 disposed:false
+58 silly fetch manifest expo-status-bar@~2.2.0
+59 silly packumentCache full:https://registry.npmjs.org/expo-status-bar cache-miss
+60 http fetch GET 200 https://registry.npmjs.org/expo-status-bar 65ms (cache revalidated)
+61 silly packumentCache full:https://registry.npmjs.org/expo-status-bar set size:760167 disposed:false
+62 verbose stack Error: unable to resolve dependency tree
+62 verbose stack     at #failPeerConflict (/opt/homebrew/lib/node_modules/npm/node_modules/@npmcli/arborist/lib/arborist/build-ideal-tree.js:1516:25)
+62 verbose stack     at #loadPeerSet (/opt/homebrew/lib/node_modules/npm/node_modules/@npmcli/arborist/lib/arborist/build-ideal-tree.js:1509:29)
+62 verbose stack     at async #loadPeerSet (/opt/homebrew/lib/node_modules/npm/node_modules/@npmcli/arborist/lib/arborist/build-ideal-tree.js:1461:23)
+62 verbose stack     at async #buildDepStep (/opt/homebrew/lib/node_modules/npm/node_modules/@npmcli/arborist/lib/arborist/build-ideal-tree.js:984:15)
+62 verbose stack     at async Arborist.buildIdealTree (/opt/homebrew/lib/node_modules/npm/node_modules/@npmcli/arborist/lib/arborist/build-ideal-tree.js:179:7)
+62 verbose stack     at async Promise.all (index 1)
+62 verbose stack     at async Arborist.reify (/opt/homebrew/lib/node_modules/npm/node_modules/@npmcli/arborist/lib/arborist/reify.js:112:5)
+62 verbose stack     at async Install.exec (/opt/homebrew/lib/node_modules/npm/lib/commands/install.js:158:5)
+62 verbose stack     at async Npm.exec (/opt/homebrew/lib/node_modules/npm/lib/npm.js:193:9)
+62 verbose stack     at async module.exports (/opt/homebrew/lib/node_modules/npm/lib/cli/entry.js:67:5)
+63 error code ERESOLVE
+64 error ERESOLVE unable to resolve dependency tree
+65 error
+66 error While resolving: sgp-tecnico-expo@1.0.0
+66 error Found: react@18.3.1
+66 error node_modules/react
+66 error   react@"18.3.1" from the root project
+66 error   peer react@"*" from expo-status-bar@2.2.3
+66 error   node_modules/expo-status-bar
+66 error     expo-status-bar@"~2.2.0" from the root project
+66 error
+66 error Could not resolve dependency:
+66 error peer react@"^19.0.0" from react-native@0.79.2
+66 error node_modules/react-native
+66 error   react-native@"0.79.2" from the root project
+66 error   peer react-native@"*" from expo-status-bar@2.2.3
+66 error   node_modules/expo-status-bar
+66 error     expo-status-bar@"~2.2.0" from the root project
+66 error
+66 error Fix the upstream dependency conflict, or retry this command with --force or --legacy-peer-deps to accept an incorrect (and potentially broken) dependency resolution.
+67 error
+67 error
+67 error For a full report see:
+67 error /Users/guilhermesilva/.gemini/antigravity/scratch/SgpTecnicoExpoApp/tmp-cache/_logs/2026-08-14T18_24_02_990Z-eresolve-report.txt
+68 silly unfinished npm timer reify 1786731843223
+69 silly unfinished npm timer reify:loadTrees 1786731843223
+70 silly unfinished npm timer idealTree:buildDeps 1786731843408
+71 silly unfinished npm timer idealTree:#root 1786731843409
+72 verbose cwd /Users/guilhermesilva/.gemini/antigravity/scratch/SgpTecnicoExpoApp
+73 verbose os Darwin 25.2.0
+74 verbose node v26.5.0
+75 verbose npm  v11.17.0
+76 verbose exit 1
+77 verbose code 1
+78 error A complete log of this run can be found in: /Users/guilhermesilva/.gemini/antigravity/scratch/SgpTecnicoExpoApp/tmp-cache/_logs/2026-08-14T18_24_02_990Z-debug-0.log

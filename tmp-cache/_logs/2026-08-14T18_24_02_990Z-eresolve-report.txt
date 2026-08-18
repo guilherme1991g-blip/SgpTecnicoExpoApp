@@ -1,0 +1,22 @@
+'Log files:
+/Users/guilhermesilva/.gemini/antigravity/scratch/SgpTecnicoExpoApp/tmp-cache/_logs/2026-08-14T18_24_02_990Z-debug-0.log
+
+# npm resolution error report
+
+While resolving: sgp-tecnico-expo@1.0.0
+Found: react@18.3.1
+node_modules/react
+  react@"18.3.1" from the root project
+  peer react@"*" from expo-status-bar@2.2.3
+  node_modules/expo-status-bar
+    expo-status-bar@"~2.2.0" from the root project
+
+Could not resolve dependency:
+peer react@"^19.0.0" from react-native@0.79.2
+node_modules/react-native
+  react-native@"0.79.2" from the root project
+  peer react-native@"*" from expo-status-bar@2.2.3
+  node_modules/expo-status-bar
+    expo-status-bar@"~2.2.0" from the root project
+
+Fix the upstream dependency conflict, or retry this command with --force or --legacy-peer-deps to accept an incorrect (and potentially broken) dependency resolution.

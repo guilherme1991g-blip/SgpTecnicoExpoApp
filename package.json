@@ -1,0 +1,28 @@
+{
+  "name": "sgp-tecnico-expo",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web"
+  },
+  "dependencies": {
+    "@expo/vector-icons": "^15.0.3",
+    "axios": "^1.7.4",
+    "expo": "~54.0.0",
+    "expo-image-picker": "~16.0.6",
+    "expo-linking": "~8.0.12",
+    "expo-location": "~19.0.8",
+    "expo-status-bar": "~3.0.9",
+    "react": "19.1.0",
+    "react-native": "0.81.5"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.20.0",
+    "@types/react": "~19.0.0",
+    "typescript": "^5.3.3"
+  },
+  "private": true
+}
