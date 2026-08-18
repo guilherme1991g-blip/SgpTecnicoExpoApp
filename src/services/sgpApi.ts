@@ -549,7 +549,7 @@ export const fetchOnuFttxInfo = async (onuIdOrSerial: string | number) => {
 
         let causePt = causeRaw;
         if (causeRaw === 'DyingGasp') {
-          causePt = 'Falta de Energia (Desligada no Disjuntor)';
+          causePt = 'Falta de Energia';
         } else if (causeRaw === 'LOS' || causeRaw === 'LOSi') {
           causePt = 'Sinal Baixo / Rompimento de Fibra';
         } else if (causeRaw === 'WireDown') {
@@ -568,7 +568,7 @@ export const fetchOnuFttxInfo = async (onuIdOrSerial: string | number) => {
 
     let causeFormatted = lastOfflineCause;
     if (lastOfflineCause === 'DyingGasp') {
-      causeFormatted = 'Falta de Energia (Desligada no Disjuntor)';
+      causeFormatted = 'Falta de Energia';
     } else if (lastOfflineCause === 'LOS' || lastOfflineCause === 'LOSi') {
       causeFormatted = 'Sinal Baixo / Rompimento de Fibra';
     }
