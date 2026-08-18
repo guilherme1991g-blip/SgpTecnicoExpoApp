@@ -510,7 +510,21 @@ export const OsDetailScreen: React.FC<Props> = ({ chamado, onBack, onCloseOsClic
           {onlineIpStr ? (
             <View style={styles.networkMetaRow}>
               <Text style={styles.networkMetaLabel}>IP Conexão:</Text>
-              <Text style={styles.networkMetaValue}>{onlineIpStr}</Text>
+              <View style={styles.copyableWrapper}>
+                <Text style={[styles.networkMetaValue, { color: '#F8FAFC', fontWeight: '600' }]}>
+                  {onlineIpStr}
+                </Text>
+                <TouchableOpacity
+                  style={styles.copyBtn}
+                  onPress={async () => {
+                    await Clipboard.setStringAsync(onlineIpStr);
+                    Alert.alert('Copiado!', `IP "${onlineIpStr}" copiado para a área de transferência!`);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Feather name="copy" size={13} color="#38BDF8" />
+                </TouchableOpacity>
+              </View>
             </View>
           ) : null}
 
