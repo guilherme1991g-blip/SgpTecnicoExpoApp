@@ -575,7 +575,7 @@ export const fetchOnuFttxInfo = async (onuIdOrSerial: string | number) => {
 
     let phasePt = phaseMatch ? phaseMatch[1].trim() : '';
     if (phasePt.toLowerCase().includes('working')) {
-      phasePt = 'Funcionando Perfeitamente (Online)';
+      phasePt = 'Online';
     } else if (phasePt.toLowerCase().includes('los')) {
       phasePt = 'Sinal Perdido (Fibra Rompida)';
     } else if (phasePt.toLowerCase().includes('dying')) {
