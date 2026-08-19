@@ -22,6 +22,8 @@ import {
   OltOnuItem,
   fetchOnuLiveInfoSgp,
   fetchOnuFttxInfo,
+  resetOnuSgp,
+  deauthOnuSgp,
 } from '../services/sgpApi';
 
 interface Props {
@@ -86,6 +88,86 @@ export const OltConsultationScreen: React.FC<Props> = ({ onBackToOs }) => {
     if (!text) return;
     await Clipboard.setStringAsync(text);
     Alert.alert('Copiado!', `${label} foi copiado para a área de transferência.`);
+  };
+
+  const [actionLoadingOnuId, setActionLoadingOnuId] = useState<number | null>(null);
+  const [actionType, setActionType] = useState<'RESET' | 'DEAUTH' | null>(null);
+
+  const confirmResetOnu = (item: OltOnuItem) => {
+    const clientName = item.service_cliente || item.description || 'Cliente';
+    const mac = item.phy_addr ? ` (${item.phy_addr})` : '';
+
+    Alert.alert(
+      '🔄 Reiniciar ONU',
+      `Deseja enviar o comando para reiniciar a ONU de ${clientName}${mac}?`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Reiniciar',
+          style: 'default',
+          onPress: () => executeResetOnu(item),
+        },
+      ]
+    );
+  };
+
+  const executeResetOnu = async (item: OltOnuItem) => {
+    setActionLoadingOnuId(item.id);
+    setActionType('RESET');
+    try {
+      const res = await resetOnuSgp(item.id);
+      if (res.success) {
+        Alert.alert('Sucesso', res.message || `Comando enviado! A ONU de ${item.service_cliente || item.phy_addr} está sendo reiniciada.`);
+      } else {
+        Alert.alert('Atenção', res.message || 'Não foi possível reiniciar a ONU.');
+      }
+    } catch (e: any) {
+      Alert.alert('Erro', e?.message || 'Falha ao executar o comando de reiniciar.');
+    } finally {
+      setActionLoadingOnuId(null);
+      setActionType(null);
+    }
+  };
+
+  const confirmDeauthOnu = (item: OltOnuItem) => {
+    const clientName = item.service_cliente || item.description || 'Cliente';
+    const mac = item.phy_addr ? ` (${item.phy_addr})` : '';
+
+    Alert.alert(
+      '⚠️ Desautorizar ONU',
+      `ATENÇÃO: Desautorizar a ONU de ${clientName}${mac} removerá o cadastro da ONU na OLT. O cliente perderá a conexão. Deseja continuar?`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Desautorizar',
+          style: 'destructive',
+          onPress: () => executeDeauthOnu(item),
+        },
+      ]
+    );
+  };
+
+  const executeDeauthOnu = async (item: OltOnuItem) => {
+    setActionLoadingOnuId(item.id);
+    setActionType('DEAUTH');
+    try {
+      const res = await deauthOnuSgp(item.id);
+      if (res.success) {
+        Alert.alert('Sucesso', res.message || `ONU de ${item.service_cliente || item.phy_addr} desautorizada com sucesso!`);
+        // Remove a ONU desautorizada da lista local
+        setOnus((prev) => prev.filter((o) => o.id !== item.id));
+        if (selectedOnuForModal?.id === item.id) {
+          setSelectedOnuForModal(null);
+        }
+      } else {
+        Alert.alert('Atenção', res.message || 'Não foi possível desautorizar a ONU.');
+      }
+    } catch (e: any) {
+      Alert.alert('Erro', e?.message || 'Falha ao executar o comando de desautorizar.');
+    } finally {
+      setActionLoadingOnuId(null);
+      setActionType(null);
+    }
   };
 
   // Abre Modal de Diagnóstico Completo da ONU
@@ -300,6 +382,37 @@ export const OltConsultationScreen: React.FC<Props> = ({ onBackToOs }) => {
               </Text>
             </View>
           </View>
+        </View>
+
+        {/* BOTÕES DE AÇÃO: REINICIAR E DESAUTORIZAR */}
+        <View style={styles.onuActionRow}>
+          <TouchableOpacity
+            style={[styles.onuActionBtn, styles.onuResetBtn]}
+            onPress={() => confirmResetOnu(item)}
+            disabled={actionLoadingOnuId === item.id}
+            activeOpacity={0.8}
+          >
+            {actionLoadingOnuId === item.id && actionType === 'RESET' ? (
+              <ActivityIndicator size="small" color="#F59E0B" style={{ marginRight: 6 }} />
+            ) : (
+              <Feather name="refresh-cw" size={13} color="#F59E0B" style={{ marginRight: 6 }} />
+            )}
+            <Text style={styles.onuResetBtnText}>Reiniciar</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.onuActionBtn, styles.onuDeauthBtn]}
+            onPress={() => confirmDeauthOnu(item)}
+            disabled={actionLoadingOnuId === item.id}
+            activeOpacity={0.8}
+          >
+            {actionLoadingOnuId === item.id && actionType === 'DEAUTH' ? (
+              <ActivityIndicator size="small" color="#EF4444" style={{ marginRight: 6 }} />
+            ) : (
+              <Feather name="user-x" size={13} color="#EF4444" style={{ marginRight: 6 }} />
+            )}
+            <Text style={styles.onuDeauthBtnText}>Desautorizar</Text>
+          </TouchableOpacity>
         </View>
 
         {/* BOTÃO DE DIAGNÓSTICO / LOG COMPLETO */}
@@ -611,6 +724,39 @@ export const OltConsultationScreen: React.FC<Props> = ({ onBackToOs }) => {
                   ) : null}
                 </View>
 
+                {/* BOTÕES DE AÇÃO NA MODAL: REINICIAR E DESAUTORIZAR */}
+                {selectedOnuForModal ? (
+                  <View style={styles.modalActionRow}>
+                    <TouchableOpacity
+                      style={[styles.modalActionBtn, styles.onuResetBtn, { flex: 1, marginRight: 6 }]}
+                      onPress={() => confirmResetOnu(selectedOnuForModal)}
+                      disabled={actionLoadingOnuId === selectedOnuForModal.id}
+                      activeOpacity={0.8}
+                    >
+                      {actionLoadingOnuId === selectedOnuForModal.id && actionType === 'RESET' ? (
+                        <ActivityIndicator size="small" color="#F59E0B" style={{ marginRight: 6 }} />
+                      ) : (
+                        <Feather name="refresh-cw" size={14} color="#F59E0B" style={{ marginRight: 6 }} />
+                      )}
+                      <Text style={styles.onuResetBtnText}>Reiniciar ONU</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.modalActionBtn, styles.onuDeauthBtn, { flex: 1, marginLeft: 6 }]}
+                      onPress={() => confirmDeauthOnu(selectedOnuForModal)}
+                      disabled={actionLoadingOnuId === selectedOnuForModal.id}
+                      activeOpacity={0.8}
+                    >
+                      {actionLoadingOnuId === selectedOnuForModal.id && actionType === 'DEAUTH' ? (
+                        <ActivityIndicator size="small" color="#EF4444" style={{ marginRight: 6 }} />
+                      ) : (
+                        <Feather name="user-x" size={14} color="#EF4444" style={{ marginRight: 6 }} />
+                      )}
+                      <Text style={styles.onuDeauthBtnText}>Desautorizar ONU</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : null}
+
                 {/* BOTÃO E SEÇÃO DE LOGS */}
                 <TouchableOpacity
                   style={styles.onuLogToggleBtn}
@@ -855,4 +1001,53 @@ const styles = StyleSheet.create({
   logIndexText: { color: '#94A3B8', fontSize: 11, fontWeight: '600' },
   logCauseText: { fontSize: 11, fontWeight: '700' },
   logDetailText: { color: '#CBD5E1', fontSize: 11, marginTop: 2 },
+
+  onuActionRow: {
+    flexDirection: 'row',
+    marginTop: 10,
+    marginBottom: 8,
+  },
+  onuActionBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  onuResetBtn: {
+    backgroundColor: 'rgba(245, 158, 11, 0.12)',
+    borderColor: 'rgba(245, 158, 11, 0.4)',
+    marginRight: 6,
+  },
+  onuResetBtnText: {
+    color: '#F59E0B',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  onuDeauthBtn: {
+    backgroundColor: 'rgba(239, 68, 68, 0.12)',
+    borderColor: 'rgba(239, 68, 68, 0.4)',
+    marginLeft: 6,
+  },
+  onuDeauthBtnText: {
+    color: '#EF4444',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  modalActionRow: {
+    flexDirection: 'row',
+    marginBottom: 16,
+    marginTop: 4,
+  },
+  modalActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
 });

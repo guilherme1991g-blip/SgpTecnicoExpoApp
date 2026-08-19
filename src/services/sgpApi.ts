@@ -1909,3 +1909,85 @@ export const fetchOnusForOltSgp = async (
     return [];
   }
 };
+
+/**
+ * Reinicia uma ONU via OLT no SGP
+ * POST /api/fttx/onu/{onu_id}/reset/
+ */
+export const resetOnuSgp = async (onuId: number | string): Promise<{ success: boolean; message: string }> => {
+  try {
+    const response = await api.post(
+      `/api/fttx/onu/${onuId}/reset/`,
+      {
+        app: SGP_CONFIG.appName,
+        token: SGP_CONFIG.token,
+      },
+      {
+        params: {
+          app: SGP_CONFIG.appName,
+          token: SGP_CONFIG.token,
+        },
+      }
+    );
+
+    const data = response.data;
+    const msg = data?.message || data?.msg || data?.detail || 'Comando de reinicialização enviado com sucesso!';
+    return { success: true, message: msg };
+  } catch (error: any) {
+    // Fallback com GET caso a API do SGP utilize GET
+    try {
+      const getResp = await api.get(`/api/fttx/onu/${onuId}/reset/`, {
+        params: {
+          app: SGP_CONFIG.appName,
+          token: SGP_CONFIG.token,
+        },
+      });
+      const msg = getResp.data?.message || getResp.data?.msg || getResp.data?.detail || 'Comando de reinicialização enviado com sucesso!';
+      return { success: true, message: msg };
+    } catch (err: any) {
+      const errMsg = err?.response?.data?.message || err?.response?.data?.detail || err?.message || 'Falha ao reiniciar a ONU';
+      return { success: false, message: errMsg };
+    }
+  }
+};
+
+/**
+ * Desautoriza uma ONU via OLT no SGP
+ * POST /api/fttx/onu/{onu_id}/deauth/
+ */
+export const deauthOnuSgp = async (onuId: number | string): Promise<{ success: boolean; message: string }> => {
+  try {
+    const response = await api.post(
+      `/api/fttx/onu/${onuId}/deauth/`,
+      {
+        app: SGP_CONFIG.appName,
+        token: SGP_CONFIG.token,
+      },
+      {
+        params: {
+          app: SGP_CONFIG.appName,
+          token: SGP_CONFIG.token,
+        },
+      }
+    );
+
+    const data = response.data;
+    const msg = data?.message || data?.msg || data?.detail || 'ONU desautorizada com sucesso!';
+    return { success: true, message: msg };
+  } catch (error: any) {
+    // Fallback com GET caso a API do SGP utilize GET
+    try {
+      const getResp = await api.get(`/api/fttx/onu/${onuId}/deauth/`, {
+        params: {
+          app: SGP_CONFIG.appName,
+          token: SGP_CONFIG.token,
+        },
+      });
+      const msg = getResp.data?.message || getResp.data?.msg || getResp.data?.detail || 'ONU desautorizada com sucesso!';
+      return { success: true, message: msg };
+    } catch (err: any) {
+      const errMsg = err?.response?.data?.message || err?.response?.data?.detail || err?.message || 'Falha ao desautorizar a ONU';
+      return { success: false, message: errMsg };
+    }
+  }
+};
