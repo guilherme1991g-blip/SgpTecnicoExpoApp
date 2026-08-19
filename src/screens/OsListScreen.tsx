@@ -369,15 +369,7 @@ export const OsListScreen: React.FC<Props> = ({
         ) : null}
       </View>
 
-      {/* BANNER DE ALERTA DE O.S. ATRASADAS HÁ MAIS DE 3 DIAS NO TOPO DA TELA */}
-      {countAtrasadas3Dias > 0 && selectedTab !== 2 ? (
-        <View style={styles.atrasadaTopAlertBanner}>
-          <Feather name="alert-triangle" size={16} color="#EF4444" style={{ marginRight: 8 }} />
-          <Text style={styles.atrasadaTopAlertText}>
-            {countAtrasadas3Dias} O.S. Atrasada{countAtrasadas3Dias > 1 ? 's' : ''} (+3 dias) no topo em vermelho!
-          </Text>
-        </View>
-      ) : null}
+
 
       {/* Modern Status Filter Pills (Com ScrollView para caber perfeitamente) */}
       <View style={styles.pillsContainer}>
