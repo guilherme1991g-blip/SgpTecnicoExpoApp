@@ -15,7 +15,7 @@ import { Platform, StatusBar } from 'react-native';
 import * as Location from 'expo-location';
 import * as Clipboard from 'expo-clipboard';
 import { ChamadoItem, OnuDetailInfo } from '../types/sgp';
-import { updateChamadoStatus, verificaAcessoCliente, calculateRealUptime, desconectarPppoe, updateContratoLocalizacao } from '../services/sgpApi';
+import { updateChamadoStatus, verificaAcessoCliente, calculateRealUptime, desconectarPppoe, updateContratoLocalizacao, fetchContratosOfflineRegiao, OfflineContractItem } from '../services/sgpApi';
 import { Feather } from '@expo/vector-icons';
 
 interface Props {
@@ -57,10 +57,30 @@ export const OsDetailScreen: React.FC<Props> = ({ chamado, onBack, onCloseOsClic
   const [showOnuModal, setShowOnuModal] = useState(false);
   const [showLogsSection, setShowLogsSection] = useState(false);
 
-  // Executa verificação FTTX ao montar se dados disponíveis
+  // ESTADO PARA CONTRATOS OFFLINE NA REGIÃO (FILTRO DE 3 LETRAS DO LOGRADOURO)
+  const [offlineRegionData, setOfflineRegionData] = useState<{ total: number; clientesOffline: OfflineContractItem[] } | null>(null);
+  const [isLoadingOfflineRegion, setIsLoadingOfflineRegion] = useState(false);
+  const [showOfflineModal, setShowOfflineModal] = useState(false);
+
+  // Executa verificação FTTX e busca contratos offline da região ao montar
   React.useEffect(() => {
     handleCheckSignal();
+    loadOfflineContratosRegiao();
   }, []);
+
+  const loadOfflineContratosRegiao = async () => {
+    setIsLoadingOfflineRegion(true);
+    const targetAddress = chamado.endereco_logradouro || chamado.endereco_bairro || chamado.endereco_cidade || '';
+    try {
+      const res = await fetchContratosOfflineRegiao(targetAddress);
+      setOfflineRegionData(res);
+    } catch (e) {
+      console.warn('Erro ao buscar contratos offline da região:', e);
+      setOfflineRegionData({ total: 0, clientesOffline: [] });
+    } finally {
+      setIsLoadingOfflineRegion(false);
+    }
+  };
 
   // Estado local para permitir atualizar instantaneamente as coordenadas do botao GPS
   const [currentCoords, setCurrentCoords] = useState<string | undefined>(
@@ -576,6 +596,44 @@ export const OsDetailScreen: React.FC<Props> = ({ chamado, onBack, onCloseOsClic
           </TouchableOpacity>
         </View>
 
+        {/* CARD: CONTRATOS OFFLINE NA REGIÃO */}
+        <View style={styles.card}>
+          <View style={styles.cardTitleBetweenRow}>
+            <View style={styles.cardTitleRow}>
+              <Feather name="wifi-off" size={16} color="#F59E0B" />
+              <Text style={styles.cardTitle}>Contratos offline na região</Text>
+            </View>
+
+            {isLoadingOfflineRegion ? (
+              <ActivityIndicator size="small" color="#F59E0B" />
+            ) : (
+              <View style={[styles.statusBadgeDot, { backgroundColor: (offlineRegionData?.total || 0) > 0 ? 'rgba(239, 68, 68, 0.15)' : 'rgba(16, 185, 129, 0.15)' }]}>
+                <View style={[styles.dotIndicator, { backgroundColor: (offlineRegionData?.total || 0) > 0 ? '#EF4444' : '#10B981' }]} />
+                <Text style={[styles.statusBadgeDotText, { color: (offlineRegionData?.total || 0) > 0 ? '#EF4444' : '#10B981' }]}>
+                  {offlineRegionData?.total || 0} OFFLINE
+                </Text>
+              </View>
+            )}
+          </View>
+
+          <Text style={{ color: '#94A3B8', fontSize: 12, marginTop: 6, marginBottom: 12 }}>
+            {chamado.endereco_logradouro || chamado.endereco_bairro
+              ? `Filtro por logradouro: "${chamado.endereco_logradouro || chamado.endereco_bairro}" (3 primeiras letras)`
+              : 'Verificação de quedas de clientes na mesma região'}
+          </Text>
+
+          <TouchableOpacity
+            style={styles.consultarOfflineBtn}
+            onPress={() => setShowOfflineModal(true)}
+            activeOpacity={0.8}
+          >
+            <Feather name="users" size={14} color="#0F172A" />
+            <Text style={styles.consultarOfflineBtnText}>
+              Consultar clientes offline ({(offlineRegionData?.total || 0)})
+            </Text>
+          </TouchableOpacity>
+        </View>
+
         {/* BOTÕES DE AÇÃO DE STATUS DA OS */}
         {isAberta && (
           <TouchableOpacity
@@ -810,6 +868,71 @@ export const OsDetailScreen: React.FC<Props> = ({ chamado, onBack, onCloseOsClic
                 {testResult && <Text style={styles.testResultTextModal}>{testResult}</Text>}
               </ScrollView>
             )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* MODAL CLIENTES OFFLINE NA REGIÃO */}
+      <Modal
+        visible={showOfflineModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowOfflineModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <View style={styles.cardTitleRow}>
+                <Feather name="wifi-off" size={18} color="#EF4444" />
+                <Text style={styles.modalTitle}>Clientes Offline na Região</Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowOfflineModal(false)} style={styles.closeBtn} activeOpacity={0.7}>
+                <Feather name="x" size={18} color="#94A3B8" />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={{ color: '#94A3B8', fontSize: 12, marginBottom: 12 }}>
+              {(offlineRegionData?.total || 0) > 0
+                ? `${offlineRegionData?.total} cliente(s) offline encontrado(s) na mesma rua/bairro:`
+                : 'Nenhum contrato offline encontrado com este logradouro.'}
+            </Text>
+
+            {offlineRegionData && offlineRegionData.clientesOffline.length > 0 ? (
+              <ScrollView style={{ maxHeight: 380 }} showsVerticalScrollIndicator={false}>
+                {offlineRegionData.clientesOffline.map((item, idx) => (
+                  <View key={item.servico_id ? item.servico_id.toString() : idx.toString()} style={styles.offlineClientCardItem}>
+                    <Text style={styles.offlineClientCardName}>{item.nome}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+                      <Feather name="map-pin" size={12} color="#94A3B8" style={{ marginRight: 4 }} />
+                      <Text style={styles.offlineClientCardAddr}>
+                        {item.endereco_logradouro || item.endereco_bairro || item.endereco || 'Endereço N/A'}
+                        {item.endereco_cidade ? ` - ${item.endereco_cidade}/${item.endereco_uf || ''}` : ''}
+                      </Text>
+                    </View>
+                    {item.pppoe_login ? (
+                      <Text style={styles.offlineClientCardLogin}>Login PPPoE: {item.pppoe_login}</Text>
+                    ) : null}
+                  </View>
+                ))}
+              </ScrollView>
+            ) : (
+              <View style={{ paddingVertical: 24, alignItems: 'center' }}>
+                <Feather name="check-circle" size={40} color="#10B981" />
+                <Text style={{ color: '#F8FAFC', fontWeight: '700', marginTop: 10, fontSize: 15 }}>
+                  Tudo normal na área!
+                </Text>
+                <Text style={{ color: '#64748B', fontSize: 12, textAlign: 'center', marginTop: 4 }}>
+                  Nenhum outro cliente offline detectado na vizinhança.
+                </Text>
+              </View>
+            )}
+
+            <TouchableOpacity
+              style={[styles.refreshSignalBtnModal, { marginTop: 14, backgroundColor: '#1E293B' }]}
+              onPress={() => setShowOfflineModal(false)}
+            >
+              <Text style={{ color: '#F8FAFC', fontWeight: '700', fontSize: 13 }}>Fechar</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -1346,5 +1469,46 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 6,
     lineHeight: 18,
+  },
+  consultarOfflineBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F59E0B',
+    borderRadius: 10,
+    height: 42,
+    marginTop: 6,
+  },
+  consultarOfflineBtnText: {
+    color: '#0F172A',
+    fontWeight: '700',
+    fontSize: 13,
+    marginLeft: 6,
+  },
+  offlineClientCardItem: {
+    backgroundColor: '#161F30',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#1E293B',
+    borderLeftWidth: 3,
+    borderLeftColor: '#EF4444',
+  },
+  offlineClientCardName: {
+    color: '#F8FAFC',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  offlineClientCardAddr: {
+    color: '#94A3B8',
+    fontSize: 12,
+    flex: 1,
+  },
+  offlineClientCardLogin: {
+    color: '#38BDF8',
+    fontSize: 11,
+    fontWeight: '600',
+    marginTop: 4,
   },
 });

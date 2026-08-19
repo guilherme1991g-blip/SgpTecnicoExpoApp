@@ -756,7 +756,6 @@ export const searchClientesSgp = async (nomeQuery: string): Promise<UraClienteIt
     }, {
       headers: { 'Content-Type': 'application/json' },
     });
-
     if (response.data && Array.isArray(response.data.clientes)) {
       return response.data.clientes;
     }
@@ -764,5 +763,83 @@ export const searchClientesSgp = async (nomeQuery: string): Promise<UraClienteIt
   } catch (error) {
     console.warn('Erro ao buscar clientes no SGP /api/ura/clientes/:', error);
     return [];
+  }
+};
+
+export interface OfflineContractItem {
+  servico_id?: number;
+  nome: string;
+  pppoe_login?: string;
+  pppoe_senha?: string;
+  plano?: string;
+  endereco_logradouro?: string;
+  endereco_bairro?: string;
+  endereco_cidade?: string;
+  endereco_uf?: string;
+  endereco?: string;
+  online?: boolean;
+  radacct?: {
+    acctstoptime?: string;
+    acctterminatecause?: string;
+  }[];
+}
+
+/**
+ * Normaliza endereço para extrair o prefixo de 3 letras da rua/logradouro
+ */
+export const getAddressPrefix3 = (address?: string): string => {
+  if (!address || typeof address !== 'string') return '';
+  let clean = address
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .trim();
+
+  // Remove prefixos comuns de vias públicas
+  clean = clean.replace(/^(RUA|R\.|AV|AVENIDA|SITIO|SÍTIO|POVOADO|TRAVESSA|TV)\s+/, '');
+  return clean.slice(0, 3);
+};
+
+/**
+ * Busca contratos offline no SGP via POST /ws/radius/radacct/list/all/
+ * e filtra pelas 3 primeiras letras do logradouro do cliente da O.S.
+ */
+export const fetchContratosOfflineRegiao = async (logradouroCliente?: string): Promise<{ total: number; clientesOffline: OfflineContractItem[] }> => {
+  try {
+    const response = await api.post('/ws/radius/radacct/list/all/', {
+      app: SGP_CONFIG.appName,
+      token: SGP_CONFIG.token,
+      limit: 500,
+      online: false,
+    }, {
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+    const list: OfflineContractItem[] = Array.isArray(response.data?.result) ? response.data.result : [];
+
+    const prefix = getAddressPrefix3(logradouroCliente);
+    if (!prefix || prefix.length < 2) {
+      return { total: 0, clientesOffline: [] };
+    }
+
+    const filtered = list.filter((item) => {
+      const logrPrefix = getAddressPrefix3(item.endereco_logradouro);
+      const bairroPrefix = getAddressPrefix3(item.endereco_bairro);
+      const fullAddrUpper = (item.endereco || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+
+      return (
+        (logrPrefix && logrPrefix === prefix) ||
+        (bairroPrefix && bairroPrefix === prefix) ||
+        fullAddrUpper.includes(prefix)
+      );
+    });
+
+    return {
+      total: filtered.length,
+      clientesOffline: filtered,
+    };
+  } catch (error) {
+    console.warn('Erro ao buscar contratos offline /ws/radius/radacct/list/all/:', error);
+    return { total: 0, clientesOffline: [] };
   }
 };
