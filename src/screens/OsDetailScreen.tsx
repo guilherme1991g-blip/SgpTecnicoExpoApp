@@ -602,6 +602,14 @@ export const OsDetailScreen: React.FC<Props> = ({ chamado, onBack, onCloseOsClic
             <View style={styles.cardTitleRow}>
               <Feather name="wifi-off" size={16} color="#F59E0B" />
               <Text style={styles.cardTitle}>Contratos offline na região</Text>
+              <TouchableOpacity
+                onPress={loadOfflineContratosRegiao}
+                disabled={isLoadingOfflineRegion}
+                style={{ padding: 4, marginLeft: 6 }}
+                activeOpacity={0.7}
+              >
+                <Feather name="refresh-cw" size={14} color="#38BDF8" />
+              </TouchableOpacity>
             </View>
 
             {isLoadingOfflineRegion ? (
