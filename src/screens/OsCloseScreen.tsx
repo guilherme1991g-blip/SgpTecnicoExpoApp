@@ -15,11 +15,13 @@ import {
 } from 'react-native';
 import * as Device from 'expo-device';
 import * as ImagePicker from 'expo-image-picker';
-import { updateChamadoStatus, addAnexoBase64, saveFinalizedChamadoLocal } from '../services/sgpApi';
+import { updateChamadoStatus, addAnexoBase64, saveFinalizedChamadoLocal, ChamadoItem } from '../services/sgpApi';
+import { sendAttendanceWebhook } from '../services/webhookService';
 import { Feather } from '@expo/vector-icons';
 
 interface Props {
   osId: number;
+  chamado?: ChamadoItem;
   onBack: () => void;
   onFinishSuccess: () => void;
 }
@@ -32,7 +34,7 @@ interface PhotoAttachment {
   description: string;
 }
 
-export const OsCloseScreen: React.FC<Props> = ({ osId, onBack, onFinishSuccess }) => {
+export const OsCloseScreen: React.FC<Props> = ({ osId, chamado, onBack, onFinishSuccess }) => {
   const [servicoPrestado, setServicoPrestado] = useState('');
   const [observacao, setObservacao] = useState('');
   const [photos, setPhotos] = useState<PhotoAttachment[]>([]);
@@ -142,6 +144,13 @@ export const OsCloseScreen: React.FC<Props> = ({ osId, onBack, onFinishSuccess }
         finalObs
       );
 
+      // 2. Dispara webhook de atendimento concluído para n8n em segundo plano
+      sendAttendanceWebhook('concluido', chamado, {
+        servicoPrestado,
+        observacao: finalObs,
+        osId,
+      }).catch((err) => console.warn('Erro ao disparar webhook concluido:', err));
+
       await saveFinalizedChamadoLocal({
         os_id: osId,
         oc_id: osId,
@@ -153,7 +162,7 @@ export const OsCloseScreen: React.FC<Props> = ({ osId, onBack, onFinishSuccess }
         oc_status_descricao: 'Encerrada',
         os_servicoprestado: servicoPrestado,
         os_observacao: finalObs,
-        cliente: 'Cliente SGP',
+        cliente: chamado?.cliente || 'Cliente SGP',
       } as any);
 
       // 2. Envia todas as fotos anexadas para o SGP (/api/central/chamado/{osId}/anexo/add/)

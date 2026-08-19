@@ -17,7 +17,7 @@ export type RootStackParamList = {
   Login: undefined;
   OsList: undefined;
   OsDetail: { chamado: ChamadoItem };
-  OsClose: { osId: number };
+  OsClose: { osId: number; chamado?: ChamadoItem };
   ClientSearch: undefined;
   OfflineClients: undefined;
   AuthorizeOnu: undefined;
@@ -142,7 +142,7 @@ export default function App() {
                 <OsDetailScreen
                   chamado={route.params.chamado}
                   onBack={() => navigation.goBack()}
-                  onCloseOsClick={(osId) => navigation.navigate('OsClose', { osId })}
+                  onCloseOsClick={(osId) => navigation.navigate('OsClose', { osId, chamado: route.params.chamado })}
                 />
               )}
             </Stack.Screen>
@@ -151,6 +151,7 @@ export default function App() {
               {({ navigation, route }) => (
                 <OsCloseScreen
                   osId={route.params.osId}
+                  chamado={route.params.chamado}
                   onBack={() => navigation.goBack()}
                   onFinishSuccess={() => navigation.navigate('OsList')}
                 />

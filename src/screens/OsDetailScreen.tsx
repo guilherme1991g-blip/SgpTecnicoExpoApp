@@ -28,6 +28,7 @@ import {
   fetchOnuLiveInfoSgp,
   fetchPppoeActiveSessionSgp,
 } from '../services/sgpApi';
+import { sendAttendanceWebhook } from '../services/webhookService';
 import { Feather } from '@expo/vector-icons';
 
 interface Props {
@@ -387,6 +388,12 @@ export const OsDetailScreen: React.FC<Props> = ({ chamado, onBack, onCloseOsClic
       setIsLoading(false);
       setCurrentOsStatus(2);
 
+      // Dispara webhook de atendimento iniciado em segundo plano para n8n
+      const coordsFormatted = lat && lng ? `${lat},${lng}` : undefined;
+      sendAttendanceWebhook('iniciado', chamado, { coordsFormatted }).catch((err) =>
+        console.warn('Erro ao disparar webhook iniciado:', err)
+      );
+
       Alert.alert(
         'Atendimento Iniciado!',
         `A O.S. #${numericOsId} agora está EM EXECUÇÃO.${!hasExistingLocation && lat && lng ? '\nLocalização inicial capturada e salva no contrato do cliente!' : ''}`,
@@ -394,6 +401,8 @@ export const OsDetailScreen: React.FC<Props> = ({ chamado, onBack, onCloseOsClic
       );
     } catch (e) {
       setIsLoading(false);
+      // Mesmo se houver aviso local, dispara webhook iniciado
+      sendAttendanceWebhook('iniciado', chamado).catch(() => {});
       Alert.alert('Atenção', 'O atendimento foi atualizado no SGP.');
       setCurrentOsStatus(2);
     }

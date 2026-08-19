@@ -1,6 +1,7 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ChamadoItem, HistoricoConexaoItem, OnuLogItem } from '../types/sgp';
+export { ChamadoItem, HistoricoConexaoItem, OnuLogItem };
 
 export const SGP_CONFIG = {
   baseUrl: 'https://webcnnect.sgp.tsmx.com.br',
