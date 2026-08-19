@@ -11,14 +11,20 @@ import {
   StatusBar,
   Platform,
   ScrollView,
+  Modal,
 } from 'react-native';
 import { ChamadoItem } from '../types/sgp';
-import { fetchOrdensDeServicoFromSgp } from '../services/sgpApi';
+import {
+  fetchOrdensDeServicoFromSgp,
+  getFinalizedChamadosLocal,
+} from '../services/sgpApi';
 import { Feather } from '@expo/vector-icons';
 
 interface Props {
   onOsClick: (chamado: ChamadoItem) => void;
   onOpenClientSearch: () => void;
+  onOpenOfflineClients: () => void;
+  onOpenAuthorizeOnu?: () => void;
   onLogout: () => void;
 }
 
@@ -56,6 +62,22 @@ const parseSgpDateToTimestamp = (dateStr?: string): number => {
   return 0;
 };
 
+/**
+ * Verifica se a data fornecida está dentro dos últimos 7 dias a partir de hoje
+ */
+const isWithinLast7Days = (dateStr?: string): boolean => {
+  if (!dateStr || typeof dateStr !== 'string') return true;
+  const ts = parseSgpDateToTimestamp(dateStr);
+  if (!ts) return true;
+
+  const now = Date.now();
+  const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+  const diff = now - ts;
+  
+  // Aceita qualquer data nos últimos 7 dias (permitindo margem para fuso horário de hoje)
+  return diff <= sevenDaysMs && diff >= -(24 * 60 * 60 * 1000);
+};
+
 const formatDateHeader = (
   dateRaw?: string
 ): { key: string; dayName: string; dayNum: string; monthStr: string; dayMonthStr: string } => {
@@ -79,16 +101,29 @@ const formatDateHeader = (
   return { key, dayName, dayNum, monthStr, dayMonthStr };
 };
 
-export const OsListScreen: React.FC<Props> = ({ onOsClick, onOpenClientSearch, onLogout }) => {
-  const [selectedTab, setSelectedTab] = useState<number>(0); // 0=Abertas (Todas), 1=Em Execução
-  const [selectedDateFilter, setSelectedDateFilter] = useState<string>('TODAS'); // 'TODAS' ou data 'DD/MM/YYYY'
+export const OsListScreen: React.FC<Props> = ({
+  onOsClick,
+  onOpenClientSearch,
+  onOpenOfflineClients,
+  onOpenAuthorizeOnu,
+  onLogout,
+}) => {
+  const [selectedTab, setSelectedTab] = useState<number>(0); // 0=Abertas, 1=Em Execução, 2=Finalizadas (7d)
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [selectedDateFilter, setSelectedDateFilter] = useState<string>('TODAS');
   const [searchQuery, setSearchQuery] = useState('');
   const [chamados, setChamados] = useState<ChamadoItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
+  const handleTabChange = (code: number) => {
+    setSelectedTab(code);
+    setSelectedDateFilter('TODAS');
+  };
+
   const tabs = [
     { label: 'Abertas', code: 0 },
     { label: 'Em Execução', code: 1 },
+    { label: 'Finalizadas', code: 2 },
   ];
 
   // Classifier strictly based on live SGP status_aberto / os_status
@@ -96,16 +131,27 @@ export const OsListScreen: React.FC<Props> = ({ onOsClick, onOpenClientSearch, o
     const rawOsStatus = item.os_status?.toString().trim();
     const rawOcStatus = item.oc_status?.toString().trim();
     const osDesc = (item.os_status_descricao || '').toLowerCase();
-    const hasDataEnc = item.oc_data_encerramento && item.oc_data_encerramento.trim().length > 0;
+    const ocDesc = (item.oc_status_descricao || '').toLowerCase();
+    const hasDataEnc = Boolean(item.oc_data_encerramento && item.oc_data_encerramento.trim().length > 0);
+    const hasDataFin = Boolean(item.os_data_finalizacao && item.os_data_finalizacao.trim().length > 0);
 
-    // 1 = Em Atendimento
-    if (rawOsStatus === '2' || rawOcStatus === '2' || osDesc.includes('execuç')) {
-      return 1;
+    // 2 = Encerrada / Finalizada
+    if (
+      rawOsStatus === '1' ||
+      rawOcStatus === '1' ||
+      osDesc.includes('encerrad') ||
+      osDesc.includes('finalizad') ||
+      ocDesc.includes('encerrad') ||
+      ocDesc.includes('finalizad') ||
+      hasDataEnc ||
+      hasDataFin
+    ) {
+      return 2;
     }
 
-    // 2 = Encerrada
-    if (rawOsStatus === '1' || rawOcStatus === '1' || osDesc.includes('encerrad') || hasDataEnc) {
-      return 2;
+    // 1 = Em Atendimento / Em Execução
+    if (rawOsStatus === '2' || rawOcStatus === '2' || osDesc.includes('execuç')) {
+      return 1;
     }
 
     // 0 = Aberta
@@ -115,8 +161,18 @@ export const OsListScreen: React.FC<Props> = ({ onOsClick, onOpenClientSearch, o
   const loadChamados = async () => {
     setIsLoading(true);
     try {
-      const activeOs = await fetchOrdensDeServicoFromSgp(true, false);
-      setChamados(activeOs);
+      const [activeOs, remoteFinalized, localFinalized] = await Promise.all([
+        fetchOrdensDeServicoFromSgp(true, false),
+        fetchOrdensDeServicoFromSgp(false, true),
+        getFinalizedChamadosLocal(),
+      ]);
+
+      const mapById = new Map<string, ChamadoItem>();
+      activeOs.forEach((item) => mapById.set(String(item.os_id), item));
+      remoteFinalized.forEach((item) => mapById.set(String(item.os_id), item));
+      localFinalized.forEach((item) => mapById.set(String(item.os_id), item));
+
+      setChamados(Array.from(mapById.values()));
     } catch (e) {
       console.warn('Erro ao carregar Ordens de Serviço:', e);
     } finally {
@@ -128,6 +184,10 @@ export const OsListScreen: React.FC<Props> = ({ onOsClick, onOpenClientSearch, o
     loadChamados();
   }, []);
 
+  const countAbertas = useMemo(() => chamados.filter((x) => getItemStatus(x) === 0).length, [chamados]);
+  const countExecucao = useMemo(() => chamados.filter((x) => getItemStatus(x) === 1).length, [chamados]);
+  const countFinalizadas = useMemo(() => chamados.filter((x) => getItemStatus(x) === 2).length, [chamados]);
+
   // Extrai lista única de datas para o Carrossel Calendário (DA MAIS NOVA PARA A MAIS VELHA)
   const dateStrip = useMemo(() => {
     const datesMap: {
@@ -136,10 +196,12 @@ export const OsListScreen: React.FC<Props> = ({ onOsClick, onOpenClientSearch, o
 
     chamados.forEach((item) => {
       const status = getItemStatus(item);
+      const dateRaw = item.oc_data_encerramento || item.os_data_finalizacao || item.os_data_agendamento || item.oc_data_cadastro || '';
+
       if (selectedTab === 0 && status !== 0) return;
       if (selectedTab === 1 && status !== 1) return;
+      if (selectedTab === 2 && status !== 2) return;
 
-      const dateRaw = item.os_data_agendamento || item.oc_data_cadastro || '';
       const formatted = formatDateHeader(dateRaw);
 
       if (!datesMap[formatted.key]) {
@@ -167,13 +229,15 @@ export const OsListScreen: React.FC<Props> = ({ onOsClick, onOpenClientSearch, o
   const filteredChamados = useMemo(() => {
     const list = chamados.filter((item) => {
       const status = getItemStatus(item);
+      const dateEnc = item.oc_data_encerramento || item.os_data_finalizacao || item.os_data_agendamento || item.oc_data_cadastro || '';
+
       if (selectedTab === 0 && status !== 0) return false;
       if (selectedTab === 1 && status !== 1) return false;
+      if (selectedTab === 2 && status !== 2) return false;
 
       // Filtro da Data Selecionada no Calendário
       if (selectedDateFilter !== 'TODAS') {
-        const dateRaw = item.os_data_agendamento || item.oc_data_cadastro || '';
-        const formatted = formatDateHeader(dateRaw);
+        const formatted = formatDateHeader(dateEnc);
         if (formatted.key !== selectedDateFilter) return false;
       }
 
@@ -194,25 +258,26 @@ export const OsListScreen: React.FC<Props> = ({ onOsClick, onOpenClientSearch, o
 
     // Ordenação estrita: DA MAIS NOVA PARA A MAIS VELHA (dateB - dateA)
     return list.sort((a, b) => {
-      const dateA = parseSgpDateToTimestamp(a.os_data_agendamento || a.oc_data_cadastro);
-      const dateB = parseSgpDateToTimestamp(b.os_data_agendamento || b.oc_data_cadastro);
+      const dateA = parseSgpDateToTimestamp(a.oc_data_encerramento || a.os_data_finalizacao || a.os_data_agendamento || a.oc_data_cadastro);
+      const dateB = parseSgpDateToTimestamp(b.oc_data_encerramento || b.os_data_finalizacao || b.os_data_agendamento || b.oc_data_cadastro);
       return dateB - dateA;
     });
   }, [chamados, selectedTab, selectedDateFilter, searchQuery]);
-
-  const countAbertas = chamados.filter((x) => getItemStatus(x) === 0).length;
-  const countExecucao = chamados.filter((x) => getItemStatus(x) === 1).length;
 
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#0D1117" />
 
-      {/* Top Header */}
+      {/* Top Header Original */}
       <View style={styles.header}>
         <View style={styles.headerTitleGroup}>
-          <View style={styles.logoBadge}>
-            <Feather name="calendar" size={18} color="#38BDF8" />
-          </View>
+          <TouchableOpacity
+            onPress={() => setIsMenuOpen(true)}
+            style={styles.hamburgerBtn}
+            activeOpacity={0.7}
+          >
+            <Feather name="menu" size={22} color="#F8FAFC" />
+          </TouchableOpacity>
           <View>
             <Text style={styles.headerTitle}>Agenda SGP Técnico</Text>
             <Text style={styles.headerSubtitle}>
@@ -222,19 +287,13 @@ export const OsListScreen: React.FC<Props> = ({ onOsClick, onOpenClientSearch, o
         </View>
 
         <View style={styles.headerActions}>
-          <TouchableOpacity onPress={onOpenClientSearch} style={styles.iconBtn} activeOpacity={0.7}>
-            <Feather name="users" size={18} color="#38BDF8" />
-          </TouchableOpacity>
           <TouchableOpacity onPress={loadChamados} style={styles.iconBtn} activeOpacity={0.7}>
             <Feather name="refresh-cw" size={18} color="#38BDF8" />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={onLogout} style={styles.iconBtn} activeOpacity={0.7}>
-            <Feather name="log-out" size={18} color="#F87171" />
           </TouchableOpacity>
         </View>
       </View>
 
-      {/* Search Input Bar */}
+      {/* Search Input Bar Original */}
       <View style={styles.searchContainer}>
         <Feather name="search" size={18} color="#94A3B8" style={styles.searchIcon} />
         <TextInput
@@ -251,30 +310,42 @@ export const OsListScreen: React.FC<Props> = ({ onOsClick, onOpenClientSearch, o
         ) : null}
       </View>
 
-      {/* Modern Status Filter Pills */}
-      <View style={styles.pillsRow}>
-        {tabs.map((tab) => {
-          const isSelected = selectedTab === tab.code;
-          const count = tab.code === 0 ? countAbertas : countExecucao;
+      {/* Modern Status Filter Pills (Com ScrollView para caber perfeitamente) */}
+      <View style={styles.pillsContainer}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.pillsScrollContent}
+        >
+          {tabs.map((tab) => {
+            const isSelected = selectedTab === tab.code;
+            let count = 0;
+            if (tab.code === 0) count = countAbertas;
+            if (tab.code === 1) count = countExecucao;
+            if (tab.code === 2) count = countFinalizadas;
 
-          return (
-            <TouchableOpacity
-              key={tab.code}
-              style={[styles.statusPill, isSelected && styles.statusPillActive]}
-              onPress={() => setSelectedTab(tab.code)}
-              activeOpacity={0.8}
-            >
-              <Text style={[styles.statusPillText, isSelected && styles.statusPillTextActive]}>
-                {tab.label}
-              </Text>
-              <View style={[styles.pillBadge, isSelected && styles.pillBadgeActive]}>
-                <Text style={[styles.pillBadgeText, isSelected && styles.pillBadgeTextActive]}>
-                  {count}
+            return (
+              <TouchableOpacity
+                key={tab.code}
+                style={[styles.statusPill, isSelected && styles.statusPillActive]}
+                onPress={() => {
+                  setSelectedTab(tab.code);
+                  setSelectedDateFilter('TODAS');
+                }}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.statusPillText, isSelected && styles.statusPillTextActive]}>
+                  {tab.label}
                 </Text>
-              </View>
-            </TouchableOpacity>
-          );
-        })}
+                <View style={[styles.pillBadge, isSelected && styles.pillBadgeActive]}>
+                  <Text style={[styles.pillBadgeText, isSelected && styles.pillBadgeTextActive]}>
+                    {count}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
       </View>
 
       {/* SWIPEABLE CALENDAR DAY STRIP */}
@@ -293,23 +364,25 @@ export const OsListScreen: React.FC<Props> = ({ onOsClick, onOpenClientSearch, o
             onPress={() => setSelectedDateFilter('TODAS')}
             activeOpacity={0.8}
           >
-            <Feather
-              name="layers"
-              size={16}
-              color={selectedDateFilter === 'TODAS' ? '#0D1117' : '#38BDF8'}
-            />
             <Text
               style={[
-                styles.dayCardNum,
-                { fontSize: 13, marginTop: 4 },
-                selectedDateFilter === 'TODAS' && styles.dayCardTextActive,
+                styles.dayNameText,
+                selectedDateFilter === 'TODAS' && styles.dayTextActive,
               ]}
             >
-              Todas
+              VER
+            </Text>
+            <Text
+              style={[
+                styles.dayNumText,
+                selectedDateFilter === 'TODAS' && styles.dayTextActive,
+              ]}
+            >
+              TODAS
             </Text>
           </TouchableOpacity>
 
-          {/* Cards Individuais de Datas (Com DIA/MÊS ex: 18/08) */}
+          {/* Cards de Dias Individuais */}
           {dateStrip.map((item) => {
             const isSelected = selectedDateFilter === item.key;
             return (
@@ -319,27 +392,14 @@ export const OsListScreen: React.FC<Props> = ({ onOsClick, onOpenClientSearch, o
                 onPress={() => setSelectedDateFilter(item.key)}
                 activeOpacity={0.8}
               >
-                <Text style={[styles.dayCardName, isSelected && styles.dayCardTextActive]}>
+                <Text style={[styles.dayNameText, isSelected && styles.dayTextActive]}>
                   {item.dayName}
                 </Text>
-                <Text style={[styles.dayCardNum, isSelected && styles.dayCardTextActive]}>
-                  {item.dayMonthStr}
+                <Text style={[styles.dayNumText, isSelected && styles.dayTextActive]}>
+                  {item.dayNum}
                 </Text>
-
-                <View
-                  style={[
-                    styles.dayCardDot,
-                    isSelected && { backgroundColor: '#0D1117' },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.dayCardDotText,
-                      isSelected && { color: '#38BDF8' },
-                    ]}
-                  >
-                    {item.count}
-                  </Text>
+                <View style={styles.dayBadgeCount}>
+                  <Text style={styles.dayBadgeCountText}>{item.count}</Text>
                 </View>
               </TouchableOpacity>
             );
@@ -347,32 +407,160 @@ export const OsListScreen: React.FC<Props> = ({ onOsClick, onOpenClientSearch, o
         </ScrollView>
       </View>
 
-      {/* Lista de Chamados / Timeline de O.S. */}
+      {/* Main List Area */}
       {isLoading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#38BDF8" />
-          <Text style={styles.loadingText}>Carregando agenda SGP...</Text>
+          <Text style={styles.loadingText}>Carregando agenda do técnico...</Text>
         </View>
       ) : filteredChamados.length === 0 ? (
         <View style={styles.emptyContainer}>
-          <Feather name="calendar" size={48} color="#334155" />
+          <Feather name="check-circle" size={48} color="#64748B" />
           <Text style={styles.emptyTitle}>Nenhuma O.S. Encontrada</Text>
           <Text style={styles.emptySub}>
-            Não há registros para a data ou filtro selecionado.
+            Não há registros cadastrados no momento para este filtro.
           </Text>
         </View>
       ) : (
         <FlatList
           data={filteredChamados}
-          keyExtractor={(item, index) =>
-            item.os_id ? `os-${item.os_id}` : `oc-${item.oc_protocolo}-${index}`
-          }
-          contentContainerStyle={styles.listContent}
+          keyExtractor={(item) => item.os_id.toString()}
           renderItem={({ item }) => (
-            <ModernTimelineOsCard chamado={item} onPress={() => onOsClick(item)} />
+            <ModernTimelineOsCard
+              chamado={item}
+              onPress={() => onOsClick(item)}
+            />
           )}
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
         />
       )}
+
+      {/* MODAL MENU HAMBÚRGUER (DRAWER LATERAL ESQUERDO) */}
+      <Modal
+        visible={isMenuOpen}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setIsMenuOpen(false)}
+      >
+        <View style={styles.drawerOverlay}>
+          <View style={styles.drawerContent}>
+            {/* DRAWER HEADER */}
+            <View style={styles.drawerHeader}>
+              <View style={styles.drawerHeaderIcon}>
+                <Feather name="shield" size={24} color="#38BDF8" />
+              </View>
+
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={styles.drawerTitle}>SGP Técnico</Text>
+                <Text style={styles.drawerSubtitle}>Menu de Operações</Text>
+              </View>
+
+              <TouchableOpacity
+                style={styles.closeDrawerBtn}
+                onPress={() => setIsMenuOpen(false)}
+              >
+                <Feather name="x" size={22} color="#94A3B8" />
+              </TouchableOpacity>
+            </View>
+
+            {/* DRAWER MENU ITEMS */}
+            <View style={styles.drawerMenuItems}>
+              {/* ORDENS DE SERVIÇO */}
+              <TouchableOpacity
+                style={[styles.menuItemRow, styles.menuItemRowActive]}
+                onPress={() => setIsMenuOpen(false)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.menuItemIconCircle}>
+                  <Feather name="file-text" size={18} color="#38BDF8" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.menuItemText}>Ordens de Serviço</Text>
+                  <Text style={styles.menuItemSubText}>Agenda de chamados em aberto</Text>
+                </View>
+              </TouchableOpacity>
+
+              {/* BUSCAR CLIENTES */}
+              <TouchableOpacity
+                style={styles.menuItemRow}
+                onPress={() => {
+                  setIsMenuOpen(false);
+                  onOpenClientSearch();
+                }}
+                activeOpacity={0.7}
+              >
+                <View style={styles.menuItemIconCircle}>
+                  <Feather name="search" size={18} color="#38BDF8" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.menuItemText}>Buscar Clientes</Text>
+                  <Text style={styles.menuItemSubText}>Consulta por nome no SGP</Text>
+                </View>
+              </TouchableOpacity>
+
+              {/* CLIENTES OFFLINE */}
+              <TouchableOpacity
+                style={styles.menuItemRow}
+                onPress={() => {
+                  setIsMenuOpen(false);
+                  onOpenOfflineClients();
+                }}
+                activeOpacity={0.7}
+              >
+                <View style={styles.menuItemIconCircle}>
+                  <Feather name="wifi-off" size={18} color="#F59E0B" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.menuItemText}>Clientes Offline</Text>
+                  <Text style={styles.menuItemSubText}>Filtro por bairro, Ativo vs Suspenso</Text>
+                </View>
+              </TouchableOpacity>
+
+              {/* AUTORIZAR ONU */}
+              <TouchableOpacity
+                style={styles.menuItemRow}
+                onPress={() => {
+                  setIsMenuOpen(false);
+                  if (onOpenAuthorizeOnu) {
+                    onOpenAuthorizeOnu();
+                  }
+                }}
+                activeOpacity={0.7}
+              >
+                <View style={styles.menuItemIconCircle}>
+                  <Feather name="cpu" size={18} color="#10B981" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.menuItemText}>Autorizar ONU</Text>
+                  <Text style={styles.menuItemSubText}>Provisionamento direto na OLT</Text>
+                </View>
+              </TouchableOpacity>
+            </View>
+
+            {/* DRAWER FOOTER (LOGOUT) */}
+            <View style={styles.drawerFooter}>
+              <TouchableOpacity
+                style={styles.logoutMenuItemBtn}
+                onPress={() => {
+                  setIsMenuOpen(false);
+                  onLogout();
+                }}
+                activeOpacity={0.8}
+              >
+                <Feather name="log-out" size={18} color="#EF4444" />
+                <Text style={styles.logoutMenuItemText}>Sair da Conta</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <TouchableOpacity
+            style={styles.drawerBackdrop}
+            onPress={() => setIsMenuOpen(false)}
+            activeOpacity={1}
+          />
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -388,97 +576,125 @@ const ModernTimelineOsCard: React.FC<CardProps> = ({ chamado, onPress }) => {
   const rawOsStatus = chamado.os_status?.toString().trim();
   const rawOcStatus = chamado.oc_status?.toString().trim();
   const osDesc = (chamado.os_status_descricao || '').toLowerCase();
+  const ocDesc = (chamado.oc_status_descricao || '').toLowerCase();
+  const hasDataEnc = Boolean(chamado.oc_data_encerramento && chamado.oc_data_encerramento.trim().length > 0);
+  const hasDataFin = Boolean(chamado.os_data_finalizacao && chamado.os_data_finalizacao.trim().length > 0);
 
-  const isEmAtendimento = rawOsStatus === '2' || rawOcStatus === '2' || osDesc.includes('execuç');
+  const isEncerrada =
+    rawOsStatus === '1' ||
+    rawOcStatus === '1' ||
+    osDesc.includes('encerrad') ||
+    osDesc.includes('finalizad') ||
+    ocDesc.includes('encerrad') ||
+    ocDesc.includes('finalizad') ||
+    hasDataEnc ||
+    hasDataFin;
+
+  const isEmAtendimento = !isEncerrada && (rawOsStatus === '2' || rawOcStatus === '2' || osDesc.includes('execuç'));
 
   const getStatusColor = () => {
+    if (isEncerrada) return '#10B981'; // Green (Encerrada)
     if (isEmAtendimento) return '#F59E0B'; // Amber (Em Execução)
     return '#38BDF8'; // Cyan/Blue (Aberta)
   };
 
   const getStatusLabel = () => {
+    if (isEncerrada) return 'Finalizada';
     if (isEmAtendimento) return 'Em Execução';
     return 'Aberta';
   };
 
   // Horário Formatado da O.S.
-  const dateRaw = chamado.os_data_agendamento || chamado.oc_data_cadastro || '';
+  const dateRaw = chamado.oc_data_encerramento || chamado.os_data_finalizacao || chamado.os_data_agendamento || chamado.oc_data_cadastro || '';
   let timeStr = '--:--';
   if (dateRaw.includes('T')) {
     const tPart = dateRaw.split('T')[1];
     if (tPart) timeStr = tPart.substring(0, 5);
   } else if (dateRaw.includes(' ')) {
-    const tPart = dateRaw.split(' ')[1];
-    if (tPart) timeStr = tPart.substring(0, 5);
+    const parts = dateRaw.split(' ');
+    if (parts[1]) timeStr = parts[1].substring(0, 5);
   }
 
-  const { dayMonthStr } = formatDateHeader(dateRaw);
-
-  // PRIORIZA O PROBLEMA REPORTADO REAL DO CLIENTE (os_conteudo)
-  const realProblemDescription =
-    chamado.os_conteudo || chamado.oc_conteudo || chamado.os_observacao || chamado.os_motivo_descricao || 'Sem observações';
+  const pppoeLogin = servico?.servico_login || '';
+  const bairro = chamado.endereco_bairro || 'Não informado';
+  const ctoPorta = chamado.contrato_pop || 'CTO Não Vinculada';
 
   return (
     <TouchableOpacity
-      style={[styles.card, { borderLeftColor: getStatusColor() }]}
+      style={styles.cardContainer}
       onPress={onPress}
-      activeOpacity={0.88}
+      activeOpacity={0.85}
     >
-      <View style={styles.cardHeaderRow}>
-        <View style={styles.timeBadge}>
-          <Feather name="clock" size={13} color="#38BDF8" />
-          <Text style={styles.timeText}>
-            {timeStr !== '--:--' ? `${dayMonthStr} • ${timeStr}` : dayMonthStr}
-          </Text>
-        </View>
+      {/* TIMELINE INDICATOR LEFT BAR */}
+      <View style={[styles.timelineBar, { backgroundColor: getStatusColor() }]} />
 
-        <View style={[styles.statusBadge, { backgroundColor: `${getStatusColor()}22` }]}>
-          <View style={[styles.statusDot, { backgroundColor: getStatusColor() }]} />
-          <Text style={[styles.statusBadgeText, { color: getStatusColor() }]}>
-            {getStatusLabel()}
-          </Text>
-        </View>
-      </View>
-
-      <View style={styles.clientRow}>
-        <Text style={styles.clientNameText} numberOfLines={1}>
-          {chamado.cliente || 'Cliente SGP'}
-        </Text>
-      </View>
-
-      <Text style={styles.protocolText}>
-        {chamado.os_id ? `O.S. #${chamado.os_id} • ` : ''}Prot: {chamado.oc_protocolo || 'N/A'}
-      </Text>
-
-      {/* PROBLEMA REPORTADO / DESCRIÇÃO REAL DO ATENDIMENTO */}
-      <View style={styles.motivoBox}>
-        <Feather name="info" size={14} color="#F59E0B" style={{ marginTop: 2 }} />
-        <Text style={styles.motivoText} numberOfLines={2}>
-          {realProblemDescription}
-        </Text>
-      </View>
-
-      <View style={styles.cardFooterRow}>
-        {chamado.endereco_bairro ? (
-          <View style={styles.footerTag}>
-            <Feather name="map-pin" size={12} color="#F59E0B" />
-            <Text style={styles.footerTagText} numberOfLines={1}>
-              {chamado.endereco_bairro}
+      <View style={styles.cardBody}>
+        {/* TOP ROW: PROTOCOLO / ID & TIME BADGE */}
+        <View style={styles.cardTopRow}>
+          <View style={styles.protocolBadge}>
+            <Feather name="hash" size={12} color="#38BDF8" />
+            <Text style={styles.protocolText}>
+              O.S. #{chamado.os_id} {chamado.oc_protocolo ? `• ${chamado.oc_protocolo}` : ''}
             </Text>
           </View>
-        ) : null}
 
-        {servico?.servico_login ? (
-          <View style={styles.footerTag}>
-            <Feather name="wifi" size={12} color="#38BDF8" />
-            <Text style={[styles.footerTagText, { color: '#38BDF8' }]} numberOfLines={1}>
-              {servico.servico_login}
+          <View style={styles.timeBadge}>
+            <Feather name="clock" size={11} color="#94A3B8" style={{ marginRight: 4 }} />
+            <Text style={styles.timeText}>{timeStr}</Text>
+          </View>
+        </View>
+
+        {/* CLIENT NAME & STATUS PILL */}
+        <View style={styles.clientRow}>
+          <Text style={styles.clientNameText} numberOfLines={1}>
+            {chamado.cliente || 'Cliente SGP'}
+          </Text>
+          <View style={[styles.statusBadgeDot, { backgroundColor: `${getStatusColor()}20` }]}>
+            <View style={[styles.statusDot, { backgroundColor: getStatusColor() }]} />
+            <Text style={[styles.statusDotText, { color: getStatusColor() }]}>
+              {getStatusLabel()}
             </Text>
           </View>
+        </View>
+
+        {/* ASSUNTO / PROBLEMA */}
+        {chamado.oc_tipo_descricao || chamado.os_conteudo ? (
+          <Text style={styles.problemText} numberOfLines={2}>
+            {chamado.oc_tipo_descricao ? `[${chamado.oc_tipo_descricao}] ` : ''}
+            {chamado.os_conteudo || chamado.os_observacao || 'Sem descrição detalhada'}
+          </Text>
         ) : null}
 
-        <View style={styles.arrowIcon}>
-          <Feather name="chevron-right" size={18} color="#64748B" />
+        {/* META DETAILS CHIPS (BAIRRO, CTO, PPPOE) */}
+        <View style={styles.metaGrid}>
+          {pppoeLogin ? (
+            <View style={styles.metaChip}>
+              <Feather name="user" size={11} color="#38BDF8" />
+              <Text style={styles.metaChipText} numberOfLines={1}>
+                {pppoeLogin}
+              </Text>
+            </View>
+          ) : null}
+
+          <View style={styles.metaChip}>
+            <Feather name="map-pin" size={11} color="#94A3B8" />
+            <Text style={styles.metaChipText} numberOfLines={1}>
+              {bairro}
+            </Text>
+          </View>
+
+          <View style={styles.metaChip}>
+            <Feather name="box" size={11} color="#F59E0B" />
+            <Text style={styles.metaChipText} numberOfLines={1}>
+              {ctoPorta}
+            </Text>
+          </View>
+        </View>
+
+        {/* FOOTER ACTION ROW */}
+        <View style={styles.cardFooter}>
+          <Text style={styles.actionPromptText}>Ver detalhes & Atendimento</Text>
+          <Feather name="arrow-right" size={14} color="#38BDF8" />
         </View>
       </View>
     </TouchableOpacity>
@@ -488,7 +704,7 @@ const ModernTimelineOsCard: React.FC<CardProps> = ({ chamado, onPress }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0D1117',
+    backgroundColor: '#0B0F17',
     paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight || 0 : 0,
   },
   header: {
@@ -498,21 +714,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 12,
     paddingBottom: 10,
-    backgroundColor: '#161B22',
+    backgroundColor: '#111726',
     borderBottomWidth: 1,
-    borderBottomColor: '#21262D',
+    borderBottomColor: '#1E293B',
   },
   headerTitleGroup: {
     flexDirection: 'row',
     alignItems: 'center',
   },
-  logoBadge: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
-    backgroundColor: 'rgba(56, 189, 248, 0.15)',
-    justifyContent: 'center',
-    alignItems: 'center',
+  hamburgerBtn: {
+    padding: 8,
     marginRight: 10,
   },
   headerTitle: {
@@ -526,27 +737,29 @@ const styles = StyleSheet.create({
   },
   headerActions: {
     flexDirection: 'row',
+    alignItems: 'center',
   },
   iconBtn: {
     width: 36,
     height: 36,
     borderRadius: 10,
-    backgroundColor: '#21262D',
+    backgroundColor: '#161F30',
     justifyContent: 'center',
     alignItems: 'center',
-    marginLeft: 8,
+    borderWidth: 1,
+    borderColor: '#1E293B',
   },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#161B22',
+    backgroundColor: '#161F30',
     marginHorizontal: 16,
-    marginTop: 12,
-    marginBottom: 8,
-    borderRadius: 14,
+    marginTop: 14,
+    marginBottom: 12,
+    borderRadius: 12,
     paddingHorizontal: 12,
     borderWidth: 1,
-    borderColor: '#30363D',
+    borderColor: '#1E293B',
   },
   searchIcon: {
     marginRight: 8,
@@ -555,113 +768,104 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 44,
     color: '#F8FAFC',
-    fontSize: 14,
+    fontSize: 13,
   },
-  pillsRow: {
-    flexDirection: 'row',
-    paddingHorizontal: 16,
+  pillsContainer: {
     marginBottom: 10,
-    marginTop: 4,
+  },
+  pillsScrollContent: {
+    paddingHorizontal: 16,
   },
   statusPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#161B22',
+    backgroundColor: '#161F30',
     borderRadius: 20,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     marginRight: 8,
     borderWidth: 1,
-    borderColor: '#30363D',
+    borderColor: '#1E293B',
   },
   statusPillActive: {
-    backgroundColor: '#38BDF8',
+    backgroundColor: 'rgba(56, 189, 248, 0.15)',
     borderColor: '#38BDF8',
   },
   statusPillText: {
     color: '#94A3B8',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
   },
   statusPillTextActive: {
-    color: '#0D1117',
+    color: '#38BDF8',
     fontWeight: 'bold',
   },
   pillBadge: {
-    backgroundColor: '#21262D',
+    backgroundColor: '#0F172A',
     borderRadius: 10,
     paddingHorizontal: 6,
     paddingVertical: 2,
     marginLeft: 6,
   },
   pillBadgeActive: {
-    backgroundColor: 'rgba(13, 17, 23, 0.3)',
+    backgroundColor: '#38BDF8',
   },
   pillBadgeText: {
     color: '#94A3B8',
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: 'bold',
   },
   pillBadgeTextActive: {
-    color: '#0D1117',
+    color: '#0F172A',
   },
-
-  // SWIPEABLE CALENDAR STRIP
   calendarStripContainer: {
-    backgroundColor: '#161B22',
-    paddingVertical: 10,
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: '#21262D',
-    marginBottom: 12,
+    marginBottom: 10,
   },
   calendarStripContent: {
     paddingHorizontal: 16,
   },
   dayCard: {
-    width: 66,
-    height: 74,
-    backgroundColor: '#0D1117',
-    borderRadius: 16,
+    width: 60,
+    height: 60,
+    borderRadius: 12,
+    backgroundColor: '#161F30',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 8,
     borderWidth: 1,
-    borderColor: '#30363D',
+    borderColor: '#1E293B',
   },
   dayCardActive: {
     backgroundColor: '#38BDF8',
     borderColor: '#38BDF8',
   },
-  dayCardName: {
+  dayNameText: {
     fontSize: 10,
     fontWeight: 'bold',
-    color: '#64748B',
+    color: '#94A3B8',
   },
-  dayCardNum: {
-    fontSize: 15,
+  dayNumText: {
+    fontSize: 14,
     fontWeight: 'bold',
     color: '#F8FAFC',
-    marginVertical: 2,
+    marginTop: 2,
   },
-  dayCardTextActive: {
-    color: '#0D1117',
+  dayTextActive: {
+    color: '#0F172A',
   },
-  dayCardDot: {
-    backgroundColor: 'rgba(56, 189, 248, 0.2)',
-    borderRadius: 10,
-    paddingHorizontal: 6,
+  dayBadgeCount: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    backgroundColor: 'rgba(15, 23, 42, 0.6)',
+    borderRadius: 8,
+    paddingHorizontal: 4,
     paddingVertical: 1,
   },
-  dayCardDotText: {
-    color: '#38BDF8',
-    fontSize: 10,
+  dayBadgeCountText: {
+    color: '#F8FAFC',
+    fontSize: 8,
     fontWeight: 'bold',
-  },
-
-  listContent: {
-    paddingHorizontal: 16,
-    paddingBottom: 24,
   },
   loadingContainer: {
     flex: 1,
@@ -677,57 +881,88 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 32,
+    paddingHorizontal: 32,
   },
   emptyTitle: {
     color: '#F8FAFC',
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginTop: 12,
+    fontSize: 17,
+    fontWeight: '700',
+    marginTop: 14,
+    marginBottom: 6,
   },
   emptySub: {
     color: '#64748B',
     fontSize: 13,
     textAlign: 'center',
-    marginTop: 4,
   },
-
-  // TIMELINE OS CARD
-  card: {
-    backgroundColor: '#161B22',
-    borderRadius: 16,
-    padding: 16,
+  listContent: {
+    paddingHorizontal: 16,
+    paddingBottom: 24,
+  },
+  cardContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#111726',
+    borderRadius: 14,
     marginBottom: 12,
+    overflow: 'hidden',
     borderWidth: 1,
-    borderColor: '#21262D',
-    borderLeftWidth: 5,
+    borderColor: '#1E293B',
   },
-  cardHeaderRow: {
+  timelineBar: {
+    width: 5,
+  },
+  cardBody: {
+    flex: 1,
+    padding: 12,
+  },
+  cardTopRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 6,
   },
-  timeBadge: {
+  protocolBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(56, 189, 248, 0.12)',
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
   },
-  timeText: {
+  protocolText: {
     color: '#38BDF8',
     fontSize: 12,
     fontWeight: 'bold',
     marginLeft: 4,
   },
-  statusBadge: {
+  timeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#161F30',
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  timeText: {
+    color: '#94A3B8',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  clientRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  clientNameText: {
+    color: '#F8FAFC',
+    fontSize: 15,
+    fontWeight: 'bold',
+    flex: 1,
+    marginRight: 8,
+  },
+  statusBadgeDot: {
     flexDirection: 'row',
     alignItems: 'center',
     borderRadius: 10,
     paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingVertical: 3,
   },
   statusDot: {
     width: 6,
@@ -735,64 +970,155 @@ const styles = StyleSheet.create({
     borderRadius: 3,
     marginRight: 5,
   },
-  statusBadgeText: {
+  statusDotText: {
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
+  problemText: {
+    color: '#CBD5E1',
+    fontSize: 12,
+    lineHeight: 16,
+    marginBottom: 10,
+  },
+  metaGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: 8,
+  },
+  metaChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#161F30',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    marginRight: 6,
+    marginBottom: 4,
+    maxWidth: '48%',
+  },
+  metaChipText: {
+    color: '#94A3B8',
+    fontSize: 11,
+    marginLeft: 4,
+  },
+  cardFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#1E293B',
+  },
+  actionPromptText: {
+    color: '#38BDF8',
     fontSize: 11,
     fontWeight: 'bold',
   },
-  clientRow: {
-    marginBottom: 2,
+  drawerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    flexDirection: 'row',
   },
-  clientNameText: {
+  drawerBackdrop: {
+    flex: 1,
+  },
+  drawerContent: {
+    width: 285,
+    backgroundColor: '#0B0F17',
+    height: '100%',
+    paddingHorizontal: 18,
+    paddingBottom: 18,
+    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 0) + 14 : 44,
+    borderRightWidth: 1,
+    borderRightColor: '#1E293B',
+    justifyContent: 'space-between',
+  },
+  drawerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1E293B',
+    marginBottom: 16,
+  },
+  drawerHeaderIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    backgroundColor: 'rgba(56, 189, 248, 0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  drawerTitle: {
     color: '#F8FAFC',
     fontSize: 16,
     fontWeight: 'bold',
   },
-  protocolText: {
-    color: '#64748B',
-    fontSize: 12,
-    fontWeight: '600',
-    marginBottom: 8,
+  drawerSubtitle: {
+    color: '#94A3B8',
+    fontSize: 11,
+    marginTop: 2,
   },
-  motivoBox: {
+  closeDrawerBtn: {
+    padding: 4,
+  },
+  drawerMenuItems: {
+    flex: 1,
+  },
+  menuItemRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: '#0D1117',
-    borderRadius: 10,
-    padding: 10,
-    marginBottom: 12,
+    alignItems: 'center',
+    backgroundColor: '#161F30',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 10,
     borderWidth: 1,
-    borderColor: '#21262D',
+    borderColor: '#1E293B',
   },
-  motivoText: {
-    color: '#CBD5E1',
+  menuItemRowActive: {
+    backgroundColor: 'rgba(56, 189, 248, 0.1)',
+    borderColor: '#38BDF8',
+  },
+  menuItemIconCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: '#0F172A',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  menuItemText: {
+    color: '#F8FAFC',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  menuItemSubText: {
+    color: '#64748B',
+    fontSize: 11,
+    marginTop: 2,
+  },
+  drawerFooter: {
+    paddingVertical: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#1E293B',
+    marginBottom: Platform.OS === 'ios' ? 20 : 10,
+  },
+  logoutMenuItemBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    borderRadius: 10,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.3)',
+  },
+  logoutMenuItemText: {
+    color: '#EF4444',
+    fontWeight: 'bold',
     fontSize: 13,
     marginLeft: 8,
-    flex: 1,
-    lineHeight: 18,
-  },
-  cardFooterRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  footerTag: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#0D1117',
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    marginRight: 8,
-    borderWidth: 1,
-    borderColor: '#21262D',
-  },
-  footerTagText: {
-    color: '#F59E0B',
-    fontSize: 11,
-    fontWeight: 'bold',
-    marginLeft: 4,
-    maxWidth: 120,
-  },
-  arrowIcon: {
-    marginLeft: 'auto',
   },
 });

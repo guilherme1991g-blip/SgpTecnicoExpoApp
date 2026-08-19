@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import * as Device from 'expo-device';
 import * as ImagePicker from 'expo-image-picker';
-import { updateChamadoStatus, addAnexoBase64 } from '../services/sgpApi';
+import { updateChamadoStatus, addAnexoBase64, saveFinalizedChamadoLocal } from '../services/sgpApi';
 import { Feather } from '@expo/vector-icons';
 
 interface Props {
@@ -141,6 +141,20 @@ export const OsCloseScreen: React.FC<Props> = ({ osId, onBack, onFinishSuccess }
         servicoPrestado,
         finalObs
       );
+
+      await saveFinalizedChamadoLocal({
+        os_id: osId,
+        oc_id: osId,
+        oc_data_encerramento: new Date().toISOString(),
+        os_data_finalizacao: new Date().toISOString(),
+        os_status: 1,
+        oc_status: 1,
+        os_status_descricao: 'Encerrada',
+        oc_status_descricao: 'Encerrada',
+        os_servicoprestado: servicoPrestado,
+        os_observacao: finalObs,
+        cliente: 'Cliente SGP',
+      } as any);
 
       // 2. Envia todas as fotos anexadas para o SGP (/api/central/chamado/{osId}/anexo/add/)
       let uploadedCount = 0;

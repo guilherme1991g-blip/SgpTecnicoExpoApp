@@ -8,6 +8,8 @@ import { OsListScreen } from './src/screens/OsListScreen';
 import { OsDetailScreen } from './src/screens/OsDetailScreen';
 import { OsCloseScreen } from './src/screens/OsCloseScreen';
 import { ClientSearchScreen } from './src/screens/ClientSearchScreen';
+import { OfflineClientsScreen } from './src/screens/OfflineClientsScreen';
+import { AuthorizeOnuScreen } from './src/screens/AuthorizeOnuScreen';
 import { ChamadoItem } from './src/types/sgp';
 
 export type RootStackParamList = {
@@ -16,6 +18,8 @@ export type RootStackParamList = {
   OsDetail: { chamado: ChamadoItem };
   OsClose: { osId: number };
   ClientSearch: undefined;
+  OfflineClients: undefined;
+  AuthorizeOnu: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -91,6 +95,8 @@ export default function App() {
                 <OsListScreen
                   onOsClick={(chamado) => navigation.navigate('OsDetail', { chamado })}
                   onOpenClientSearch={() => navigation.navigate('ClientSearch')}
+                  onOpenOfflineClients={() => navigation.navigate('OfflineClients')}
+                  onOpenAuthorizeOnu={() => navigation.navigate('AuthorizeOnu')}
                   onLogout={() => navigation.replace('Login')}
                 />
               )}
@@ -99,6 +105,22 @@ export default function App() {
             <Stack.Screen name="ClientSearch">
               {({ navigation }) => (
                 <ClientSearchScreen
+                  onBackToOs={() => navigation.goBack()}
+                />
+              )}
+            </Stack.Screen>
+
+            <Stack.Screen name="OfflineClients">
+              {({ navigation }) => (
+                <OfflineClientsScreen
+                  onBackToOs={() => navigation.goBack()}
+                />
+              )}
+            </Stack.Screen>
+
+            <Stack.Screen name="AuthorizeOnu">
+              {({ navigation }) => (
+                <AuthorizeOnuScreen
                   onBackToOs={() => navigation.goBack()}
                 />
               )}

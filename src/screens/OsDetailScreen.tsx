@@ -15,7 +15,19 @@ import { Platform, StatusBar } from 'react-native';
 import * as Location from 'expo-location';
 import * as Clipboard from 'expo-clipboard';
 import { ChamadoItem, OnuDetailInfo } from '../types/sgp';
-import { updateChamadoStatus, verificaAcessoCliente, calculateRealUptime, desconectarPppoe, updateContratoLocalizacao, fetchContratosOfflineRegiao, OfflineContractItem } from '../services/sgpApi';
+import {
+  updateChamadoStatus,
+  verificaAcessoCliente,
+  calculateRealUptime,
+  desconectarPppoe,
+  updateContratoLocalizacao,
+  fetchContratosOfflineRegiao,
+  OfflineContractItem,
+  fetchOnuForContractSgp,
+  fetchOnuDetailsSgp,
+  fetchOnuLiveInfoSgp,
+  fetchPppoeActiveSessionSgp,
+} from '../services/sgpApi';
 import { Feather } from '@expo/vector-icons';
 
 interface Props {
@@ -34,7 +46,7 @@ export const OsDetailScreen: React.FC<Props> = ({ chamado, onBack, onCloseOsClic
 
   const [onuInfo, setOnuInfo] = useState<OnuDetailInfo>({
     serialOnu: servico?.servico_onu_serial || servico?.servico_mac || '',
-    tempoAtivo: servico?.onu_uptime || (isOnlineSgp ? 'Sem Leitura' : 'Desconectado'),
+    tempoAtivo: isOnlineSgp ? 'Carregando...' : 'Desconectado',
     sinalDownloadRx: rxValue ?? 0,
     sinalUploadTx: txValue ?? 0,
     sinalOltRx: oltRxValue,
@@ -99,14 +111,18 @@ export const OsDetailScreen: React.FC<Props> = ({ chamado, onBack, onCloseOsClic
 
   // VERIFICA SE HÁ DADOS DE ONU CADASTRADOS NA OLT PARA ESTE CONTRATO
   const hasOnuAvailable = Boolean(
-    servico?.hasOnuData !== undefined
+    Boolean(onuInfo.serialOnu && onuInfo.serialOnu.trim().length > 0) ||
+    Boolean(onuInfo.sinalDownloadRx && onuInfo.sinalDownloadRx !== 0) ||
+    Boolean(onuInfo.statusOnu) ||
+    Boolean(onuInfo.templateOnu) ||
+    (servico?.hasOnuData !== undefined
       ? servico.hasOnuData
       : (rxValue !== undefined && !isNaN(rxValue)) ||
         (txValue !== undefined && !isNaN(txValue)) ||
         (oltRxValue !== undefined && !isNaN(oltRxValue)) ||
         (servico?.servico_onu_serial && servico.servico_onu_serial.trim().length > 0) ||
         (servico?.onu_template && servico.onu_template.trim().length > 0) ||
-        (servico?.onu_last_read && servico.onu_last_read.trim().length > 0)
+        (servico?.onu_last_read && servico.onu_last_read.trim().length > 0))
   );
 
   // VALORES REAIS EXIBIDOS DINAMICAMENTE
@@ -146,14 +162,6 @@ export const OsDetailScreen: React.FC<Props> = ({ chamado, onBack, onCloseOsClic
 
   // AÇÃO AO CLICAR NO BOTÃO DADOS DA ONU / FTTH
   const handleOpenOnuModal = () => {
-    if (!hasOnuAvailable) {
-      Alert.alert(
-        'Informações da ONU não disponíveis',
-        'Não há registros de leitura de ONU/ONT cadastrados ou sinal óptico para este contrato no SGP.',
-        [{ text: 'OK' }]
-      );
-      return;
-    }
     setShowOnuModal(true);
   };
 
@@ -249,41 +257,86 @@ export const OsDetailScreen: React.FC<Props> = ({ chamado, onBack, onCloseOsClic
     setTestResult(null);
 
     try {
-      const result = await verificaAcessoCliente(
-        Number(chamado.contrato_id || 0),
-        numericOsId
-      );
-      setIsChecking(false);
+      const cId = chamado.contrato_id || (chamado as any).contrato || 0;
+      const clientName = chamado.cliente || (chamado as any).cliente_nome;
+      const targetLogin = servico?.servico_login || (servico as any)?.login || cId;
+      const onuItem = await fetchOnuForContractSgp(cId, clientName, targetLogin);
 
-      const isOnline = result.status === 1;
-      const newRx = result.onu_rx ?? rxValue;
-      const newTx = result.onu_tx ?? txValue;
-      const newOltRx = result.onu_olt_rx ?? oltRxValue;
-      const newPhaseState = result.phase_state || (isOnline ? 'working (Online)' : 'dying_gasp (Desconectado)');
+      if (onuItem) {
+        const [details, liveInfo, pppoeSession] = await Promise.all([
+          fetchOnuDetailsSgp(onuItem.id),
+          fetchOnuLiveInfoSgp(onuItem.id),
+          fetchPppoeActiveSessionSgp(targetLogin),
+        ]);
 
-      setOnuInfo((prev) => ({
-        ...prev,
-        statusOnu: isOnline ? 'Online' : 'Offline',
-        phaseState: newPhaseState,
-        sinalDownloadRx: newRx ?? prev.sinalDownloadRx,
-        sinalUploadTx: newTx ?? prev.sinalUploadTx,
-        sinalOltRx: newOltRx ?? prev.sinalOltRx,
-        tempoAtivo: result.onu_uptime || prev.tempoAtivo,
-        distanciaFibra: result.distancia_fibra || prev.distanciaFibra,
-        atenuacaoFibra: result.atenuacao_fibra || prev.atenuacaoFibra,
-        causaUltimaQueda: result.causa_ultima_queda || prev.causaUltimaQueda,
-        dataUltimaQueda: result.data_ultima_queda || prev.dataUltimaQueda,
-        logsOnu: result.logs_onu || prev.logsOnu,
-      }));
+        const rxNum = onuItem.info_rx ? parseFloat(onuItem.info_rx) : undefined;
+        const txNum = onuItem.info_tx ? parseFloat(onuItem.info_tx) : undefined;
+        const oltRxNum = onuItem.info_olt_rx ? parseFloat(onuItem.info_olt_rx) : undefined;
 
-      setTestResult(
-        isOnline
-          ? `Sinal ONU Atualizado: ${newRx !== undefined ? `${newRx} dBm` : 'Online'}`
-          : 'Sinal Verificado no SGP'
-      );
+        const mappedLogs = liveInfo?.history?.map((h) => {
+          let causaText = h.cause;
+          if (h.cause.includes('DyingGasp')) causaText = '⚡ Queda de Energia / ONU Desligada';
+          else if (h.cause.includes('LOSi')) causaText = '✂️ Rompimento / Perda de Sinal Óptico';
+          else if (h.cause === 'Online' || h.offlineTime === 'Conectado Atualmente') causaText = '🟢 Conectada';
+
+          return {
+            inicio: h.authTime,
+            fim: h.offlineTime,
+            causa: causaText,
+            causaTraduzida: causaText,
+          };
+        }) || [];
+
+        const lastLog = mappedLogs[0];
+
+        setOnuInfo((prev) => ({
+          ...prev,
+          statusOnu: onuItem.online ? 'Online' : 'Offline',
+          phaseState: onuItem.online ? 'working (Online)' : 'dying_gasp (Offline)',
+          sinalDownloadRx: rxNum ?? prev.sinalDownloadRx,
+          sinalUploadTx: txNum ?? prev.sinalUploadTx,
+          sinalOltRx: oltRxNum ?? prev.sinalOltRx,
+          serialOnu: onuItem.phy_addr || prev.serialOnu,
+          templateOnu: details?.template || details?.tipo || onuItem.type || prev.templateOnu,
+          ctoPorta: onuItem.olt_name ? `${onuItem.olt_name} (Slot ${onuItem.slot} / PON ${onuItem.pon})` : prev.ctoPorta,
+          distanciaFibra: liveInfo?.distance || prev.distanciaFibra,
+          tempoAtivo: pppoeSession?.uptimeFormatted || liveInfo?.onlineDuration || (onuItem.online ? 'Online' : 'Desconectado'),
+          causaUltimaQueda: lastLog ? lastLog.causa : prev.causaUltimaQueda,
+          dataUltimaQueda: lastLog ? lastLog.fim : prev.dataUltimaQueda,
+          logsOnu: mappedLogs.length > 0 ? mappedLogs : prev.logsOnu,
+        }));
+
+        setTestResult(
+          onuItem.online
+            ? `Sinal ONU: ${onuItem.info_rx ? `${onuItem.info_rx} dBm` : 'Online 🟢'}`
+            : 'ONU Desconectada 🔴'
+        );
+      } else {
+        // Fallback se nao encontrar ONU para este contrato
+        const [result, pppoeSession] = await Promise.all([
+          verificaAcessoCliente(Number(cId), numericOsId),
+          fetchPppoeActiveSessionSgp(targetLogin),
+        ]);
+        const isOnline = result.status === 1;
+
+        setOnuInfo((prev) => ({
+          ...prev,
+          statusOnu: isOnline ? 'Online' : 'Offline',
+          sinalDownloadRx: result.onu_rx ?? prev.sinalDownloadRx,
+          sinalUploadTx: result.onu_tx ?? prev.sinalUploadTx,
+          sinalOltRx: result.onu_olt_rx ?? prev.sinalOltRx,
+          tempoAtivo: pppoeSession?.uptimeFormatted || result.onu_uptime || prev.tempoAtivo,
+          distanciaFibra: result.distancia_fibra || prev.distanciaFibra,
+          logsOnu: result.logs_onu || prev.logsOnu,
+        }));
+
+        setTestResult(isOnline ? 'Sinal ONU Verificado' : 'Sinal Verificado no SGP');
+      }
     } catch (err) {
-      setIsChecking(false);
+      console.warn('Erro ao verificar sinal da ONU:', err);
       setTestResult('Sinal Verificado no SGP');
+    } finally {
+      setIsChecking(false);
     }
   };
 
@@ -558,9 +611,9 @@ export const OsDetailScreen: React.FC<Props> = ({ chamado, onBack, onCloseOsClic
           {/* TEMPO ONLINE / OFFLINE PPPOE */}
           {displayUptime ? (
             <View style={styles.networkMetaRow}>
-              <Text style={styles.networkMetaLabel}>{isOnlineSgp ? 'Tempo Online:' : 'Tempo Offline:'}</Text>
+              <Text style={styles.networkMetaLabel}>{isOnlineSgp ? 'Tempo Online:' : 'Última Desconexão:'}</Text>
               <Text style={[styles.networkMetaValue, { color: isOnlineSgp ? '#10B981' : '#EF4444', fontWeight: 'bold' }]}>
-                {displayUptime}
+                {!isOnlineSgp && onuInfo.dataUltimaQueda ? onuInfo.dataUltimaQueda : displayUptime}
               </Text>
             </View>
           ) : null}
@@ -626,7 +679,7 @@ export const OsDetailScreen: React.FC<Props> = ({ chamado, onBack, onCloseOsClic
 
           <Text style={{ color: '#94A3B8', fontSize: 12, marginTop: 6, marginBottom: 12 }}>
             {chamado.endereco_logradouro || chamado.endereco_bairro
-              ? `Filtro por logradouro: "${chamado.endereco_logradouro || chamado.endereco_bairro}" (3 primeiras letras)`
+              ? `Filtro por logradouro: "${chamado.endereco_logradouro || chamado.endereco_bairro}"`
               : 'Verificação de quedas de clientes na mesma região'}
           </Text>
 
@@ -842,8 +895,8 @@ export const OsDetailScreen: React.FC<Props> = ({ chamado, onBack, onCloseOsClic
                           <View key={idx} style={styles.logCardItem}>
                             <View style={styles.logHeaderRow}>
                               <Text style={styles.logIndexText}>Registro #{idx + 1}</Text>
-                              <Text style={[styles.logCauseText, { color: logItem.causa.includes('Energia') ? '#F59E0B' : '#EF4444' }]}>
-                                {logItem.causa}
+                              <Text style={[styles.logCauseText, { color: (logItem.causa || logItem.causaTraduzida || '').includes('Energia') ? '#F59E0B' : '#EF4444' }]}>
+                                {logItem.causa || logItem.causaTraduzida || 'Desconexão'}
                               </Text>
                             </View>
                             <Text style={styles.logDetailText}>Queda / Desconexão: {logItem.fim}</Text>
@@ -907,21 +960,55 @@ export const OsDetailScreen: React.FC<Props> = ({ chamado, onBack, onCloseOsClic
 
             {offlineRegionData && offlineRegionData.clientesOffline.length > 0 ? (
               <ScrollView style={{ maxHeight: 380 }} showsVerticalScrollIndicator={false}>
-                {offlineRegionData.clientesOffline.map((item, idx) => (
-                  <View key={item.servico_id ? item.servico_id.toString() : idx.toString()} style={styles.offlineClientCardItem}>
-                    <Text style={styles.offlineClientCardName}>{item.nome}</Text>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
-                      <Feather name="map-pin" size={12} color="#94A3B8" style={{ marginRight: 4 }} />
-                      <Text style={styles.offlineClientCardAddr}>
-                        {item.endereco_logradouro || item.endereco_bairro || item.endereco || 'Endereço N/A'}
-                        {item.endereco_cidade ? ` - ${item.endereco_cidade}/${item.endereco_uf || ''}` : ''}
-                      </Text>
+                {offlineRegionData.clientesOffline.map((item, idx) => {
+                  const lastDisconnectRaw = item.radacct?.[0]?.acctstoptime || (item as any).acctstoptime || (item as any).stop_time;
+                  let lastDisconnectFormatted = 'Desconhecido';
+
+                  if (lastDisconnectRaw) {
+                    try {
+                      const d = new Date(lastDisconnectRaw);
+                      if (!isNaN(d.getTime())) {
+                        const day = String(d.getDate()).padStart(2, '0');
+                        const month = String(d.getMonth() + 1).padStart(2, '0');
+                        const year = d.getFullYear();
+                        const hours = String(d.getHours()).padStart(2, '0');
+                        const mins = String(d.getMinutes()).padStart(2, '0');
+                        lastDisconnectFormatted = `${day}/${month}/${year} às ${hours}:${mins}`;
+                      } else {
+                        lastDisconnectFormatted = String(lastDisconnectRaw).replace('T', ' ');
+                      }
+                    } catch (err) {
+                      lastDisconnectFormatted = String(lastDisconnectRaw);
+                    }
+                  }
+
+                  const cause = item.radacct?.[0]?.acctterminatecause;
+
+                  return (
+                    <View key={item.servico_id ? item.servico_id.toString() : idx.toString()} style={styles.offlineClientCardItem}>
+                      <Text style={styles.offlineClientCardName}>{item.nome}</Text>
+
+                      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+                        <Feather name="map-pin" size={12} color="#94A3B8" style={{ marginRight: 4 }} />
+                        <Text style={styles.offlineClientCardAddr}>
+                          {item.endereco_logradouro || item.endereco_bairro || item.endereco || 'Endereço N/A'}
+                          {item.endereco_cidade ? ` - ${item.endereco_cidade}/${item.endereco_uf || ''}` : ''}
+                        </Text>
+                      </View>
+
+                      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+                        <Feather name="clock" size={12} color="#EF4444" style={{ marginRight: 4 }} />
+                        <Text style={{ color: '#F87171', fontSize: 12, fontWeight: '600' }}>
+                          Última desconexão: {lastDisconnectFormatted}
+                        </Text>
+                      </View>
+
+                      {item.pppoe_login ? (
+                        <Text style={styles.offlineClientCardLogin}>Login PPPoE: {item.pppoe_login}</Text>
+                      ) : null}
                     </View>
-                    {item.pppoe_login ? (
-                      <Text style={styles.offlineClientCardLogin}>Login PPPoE: {item.pppoe_login}</Text>
-                    ) : null}
-                  </View>
-                ))}
+                  );
+                })}
               </ScrollView>
             ) : (
               <View style={{ paddingVertical: 24, alignItems: 'center' }}>

@@ -31,10 +31,14 @@ export interface ServicoItem {
 }
 
 export interface OnuLogItem {
-  id: string;
-  inicio: string;
-  fim: string;
-  causa: string;
+  id?: string;
+  inicio?: string;
+  fim?: string;
+  causa?: string;
+  dataInicio?: string;
+  causaOriginal?: string;
+  causaTraduzida?: string;
+  duracao?: string;
 }
 
 export interface HistoricoConexaoItem {
@@ -61,6 +65,7 @@ export interface ChamadoItem {
   os_observacao?: string;
   os_data_cadastro?: string;
   os_data_agendamento?: string;
+  os_data_finalizacao?: string;
   os_motivo_id?: number | string;
   os_motivo_descricao?: string;
   os_status?: number;

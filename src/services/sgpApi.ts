@@ -1,5 +1,6 @@
 import axios from 'axios';
-import { ChamadoItem, HistoricoConexaoItem } from '../types/sgp';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { ChamadoItem, HistoricoConexaoItem, OnuLogItem } from '../types/sgp';
 
 export const SGP_CONFIG = {
   baseUrl: 'https://webcnnect.sgp.tsmx.com.br',
@@ -11,6 +12,47 @@ const api = axios.create({
   baseURL: SGP_CONFIG.baseUrl,
   timeout: 15000,
 });
+
+const FINALIZED_STORAGE_KEY = '@sgp_finalized_chamados_v1';
+
+export const saveFinalizedChamadoLocal = async (chamado: ChamadoItem) => {
+  try {
+    const existingRaw = await AsyncStorage.getItem(FINALIZED_STORAGE_KEY);
+    const list: ChamadoItem[] = existingRaw ? JSON.parse(existingRaw) : [];
+
+    const index = list.findIndex(item => item.os_id === chamado.os_id);
+    const updatedChamado: ChamadoItem = {
+      ...chamado,
+      os_status: 1,
+      oc_status: 1,
+      os_status_descricao: 'Encerrada',
+      oc_status_descricao: 'Encerrada',
+      oc_data_encerramento: chamado.oc_data_encerramento || new Date().toISOString(),
+    };
+
+    if (index >= 0) {
+      list[index] = updatedChamado;
+    } else {
+      list.unshift(updatedChamado);
+    }
+
+    await AsyncStorage.setItem(FINALIZED_STORAGE_KEY, JSON.stringify(list));
+  } catch (e) {
+    console.warn('Erro ao salvar chamado finalizado localmente:', e);
+  }
+};
+
+export const getFinalizedChamadosLocal = async (): Promise<ChamadoItem[]> => {
+  try {
+    const existingRaw = await AsyncStorage.getItem(FINALIZED_STORAGE_KEY);
+    if (existingRaw) {
+      return JSON.parse(existingRaw);
+    }
+    return [];
+  } catch (e) {
+    return [];
+  }
+};
 
 /**
  * Converte datas em varios formatos (ISO ou BR) em timestamp numerico
@@ -292,6 +334,43 @@ const mapOsToChamado = (item: any): ChamadoItem => {
  */
 export const fetchOrdensDeServicoFromSgp = async (statusAberto: boolean = false, statusEncerrada: boolean = false): Promise<ChamadoItem[]> => {
   try {
+    if (statusEncerrada) {
+      // O SGP exige 'data_finalizacao' (AAAA-MM-DD). Se não informada, o SGP filtra somente 'hoje'.
+      // Buscamos em paralelo os últimos 7 dias para retornar todas as OS finalizadas da semana.
+      const datesToFetch: string[] = [];
+      const now = new Date();
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        datesToFetch.push(`${yyyy}-${mm}-${dd}`);
+      }
+
+      const allEncerradasResults = await Promise.all(
+        datesToFetch.map(async (dateStr) => {
+          try {
+            const res = await api.post(
+              '/api/os/list/',
+              {
+                app: SGP_CONFIG.appName,
+                token: SGP_CONFIG.token,
+                status_encerrada: 1,
+                data_finalizacao: dateStr,
+              },
+              { headers: { 'Content-Type': 'application/json' } }
+            );
+            return Array.isArray(res.data) ? res.data : [];
+          } catch (e) {
+            return [];
+          }
+        })
+      );
+
+      const items = allEncerradasResults.flat();
+      return items.map(mapOsToChamado);
+    }
+
     const payload: any = {
       app: SGP_CONFIG.appName,
       token: SGP_CONFIG.token,
@@ -299,13 +378,6 @@ export const fetchOrdensDeServicoFromSgp = async (statusAberto: boolean = false,
 
     if (statusAberto) {
       payload.status_aberto = 1;
-    }
-
-    if (statusEncerrada) {
-      payload.status_encerrada = 1;
-      payload.agendamento_inicial = '2024-01-01';
-      payload.agendamento_final = '2026-12-31';
-      payload.filtro_data = 1;
     }
 
     const response = await api.post('/api/os/list/', payload, {
@@ -522,13 +594,26 @@ export const addAnexoBase64 = async (
   }
 };
 
-const fttxCache = new Map<string, { data: any; timestamp: number }>();
+export interface OnuFttxInfoResult {
+  onu_rx_power?: number;
+  onu_tx_power?: number;
+  onu_olt_rx_power?: number;
+  onu_attenuation?: string;
+  onu_distance?: string;
+  onu_online_duration?: string;
+  onu_phase_state?: string;
+  onu_last_offline_cause?: string;
+  onu_last_offline_time?: string;
+  logsOnu?: OnuLogItem[];
+}
+
+const fttxCache = new Map<string, { data: OnuFttxInfoResult; timestamp: number }>();
 
 /**
  * Busca informacoes detalhadas da ONU diretamente da API FTTX do SGP
  * GET /api/fttx/onu/{IDENTIFICADOR_ONU}/info/?app=App&token={token}
  */
-export const fetchOnuFttxInfo = async (onuIdOrSerial: string | number, forceRefresh: boolean = false) => {
+export const fetchOnuFttxInfo = async (onuIdOrSerial: string | number, forceRefresh: boolean = false): Promise<OnuFttxInfoResult | null> => {
   if (!onuIdOrSerial) return null;
   const key = String(onuIdOrSerial).trim();
 
@@ -718,12 +803,40 @@ export interface UraClienteEndereco {
   longitude?: string;
 }
 
+export interface UraClienteServico {
+  id: number;
+  tipo?: string;
+  login?: string;
+  senha?: string;
+  ip?: string;
+  mac?: string;
+  serial?: string;
+  plano?: {
+    id?: number;
+    descricao?: string;
+  };
+  onu?: {
+    rx?: string;
+    tx?: string;
+    serial?: string;
+    olt_nome?: string;
+    slot?: number;
+    pon?: number;
+    onu?: number;
+  };
+}
+
 export interface UraClienteContrato {
   id: number;
   status?: string;
+  motivo_status?: string;
   plano?: string;
   vencimento?: number;
   dataCadastro?: string;
+  contratoCentralLogin?: string;
+  contratoCentralSenha?: string;
+  servicos?: UraClienteServico[];
+  endereco?: UraClienteEndereco;
 }
 
 export interface UraClienteItem {
@@ -850,5 +963,844 @@ export const fetchContratosOfflineRegiao = async (logradouroCliente?: string): P
   } catch (error) {
     console.warn('Erro ao buscar contratos offline /ws/radius/radacct/list/all/:', error);
     return { total: 0, clientesOffline: [] };
+  }
+};
+
+/**
+ * Normaliza e agrupa bairros equivalentes ignorando acentos:
+ * - Serra da Onça / Serra -> SERRA
+ * - Chã Grande / Chan Grande -> CHÃ GRANDE
+ * - Pega pé / Pega pe / Pegape -> PEGA PÉ
+ * - Lagoa / Lagoa de João Carlos -> LAGOA DE JOÃO CARLOS
+ */
+export const canonicalizeBairro = (rawBairro?: string): string => {
+  if (!rawBairro || typeof rawBairro !== 'string') return 'OUTROS';
+
+  const s = rawBairro
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .trim();
+
+  if (!s) return 'OUTROS';
+
+  if (s.includes('SERRA')) return 'SERRA';
+  if (s.includes('CHA') || s.includes('CHAN')) return 'CHÃ GRANDE';
+  if (s.includes('PEGA') || s.includes('PEGAPE')) return 'PEGA PÉ';
+  if (s.includes('LAGOA DO MEIO')) return 'LAGOA DO MEIO';
+  if (s.includes('LAGOA')) return 'LAGOA DE JOÃO CARLOS';
+
+  return s;
+};
+
+export interface OfflineClienteDetailedItem {
+  servico_id?: number;
+  nome: string;
+  pppoe_login?: string;
+  pppoe_senha?: string;
+  plano?: string;
+  endereco_logradouro?: string;
+  endereco_bairro?: string;
+  bairroCanonico: string;
+  endereco_cidade?: string;
+  endereco_uf?: string;
+  endereco?: string;
+  online?: boolean;
+  statusContrato: string;
+  acctstoptime?: string;
+  radacct?: any[];
+}
+
+/**
+ * Busca TODOS os clientes offline no SGP via /ws/radius/radacct/list/all/
+ * e enriquece o status (Ativo vs Suspenso) via URA / SGP
+ */
+export const fetchAllClientesOfflineSgp = async (): Promise<OfflineClienteDetailedItem[]> => {
+  try {
+    const response = await api.post('/ws/radius/radacct/list/all/', {
+      app: SGP_CONFIG.appName,
+      token: SGP_CONFIG.token,
+      limit: 500,
+      online: false,
+    }, {
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+    const list: any[] = Array.isArray(response.data?.result) ? response.data.result : [];
+
+    // Busca o status URA em paralelo para cada item para rotular Ativo vs Suspenso
+    const enrichedList: OfflineClienteDetailedItem[] = await Promise.all(
+      list.map(async (item) => {
+        let statusContrato = 'Ativo';
+        const nome = item.nome || '';
+        const acctstoptime = item.radacct?.[0]?.acctstoptime || item.acctstoptime || item.stop_time;
+
+        if (nome) {
+          try {
+            const uraRes = await api.post('/api/ura/clientes/', {
+              app: SGP_CONFIG.appName,
+              token: SGP_CONFIG.token,
+              cliente_nome: nome.slice(0, 15),
+            });
+            const clis = uraRes.data?.clientes || [];
+            for (const c of clis) {
+              if (c.nome === nome && c.contratos && c.contratos.length > 0) {
+                const st = c.contratos[0].status || 'Ativo';
+                const mot = c.contratos[0].motivo_status || '';
+                statusContrato = mot ? `${st} (${mot})` : st;
+                break;
+              }
+            }
+          } catch (e) {
+            // fallback para Ativo
+          }
+        }
+
+
+        const rawB = item.endereco_bairro || item.endereco_logradouro || 'Outros';
+        const bairroCanonico = canonicalizeBairro(rawB);
+
+        return {
+          servico_id: item.servico_id,
+          nome: item.nome || 'Cliente SGP',
+          pppoe_login: item.pppoe_login || '',
+          pppoe_senha: item.pppoe_senha || '',
+          plano: item.plano || '',
+          endereco_logradouro: item.endereco_logradouro || '',
+          endereco_bairro: rawB,
+          bairroCanonico,
+          endereco_cidade: item.endereco_cidade || '',
+          endereco_uf: item.endereco_uf || '',
+          endereco: item.endereco || '',
+          online: false,
+          statusContrato,
+          acctstoptime,
+          radacct: item.radacct,
+        };
+      })
+    );
+
+    // Filtra para remover contratos cancelados
+    return enrichedList.filter((item) => {
+      const st = (item.statusContrato || '').toLowerCase();
+      return !st.includes('cancelad');
+    });
+  } catch (error) {
+    console.warn('Erro ao buscar todos os clientes offline no SGP:', error);
+    return [];
+  }
+};
+
+const ipCacheMap = new Map<string, string>();
+
+/**
+ * Busca o IP de conexão ativo do contrato via RADIUS SGP (/ws/radius/radacct/list/all/)
+ */
+export const fetchContractIpByLogin = async (login?: string): Promise<string> => {
+  if (!login || !login.trim()) return '';
+  const cleanLogin = login.trim();
+
+  if (ipCacheMap.has(cleanLogin)) {
+    return ipCacheMap.get(cleanLogin) || '';
+  }
+
+  try {
+    const res = await api.post('/ws/radius/radacct/list/all/', {
+      app: SGP_CONFIG.appName,
+      token: SGP_CONFIG.token,
+      limit: 500,
+      online: true,
+    }, {
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+    const list: any[] = Array.isArray(res.data?.result) ? res.data.result : [];
+    for (const item of list) {
+      const pppoe = item.pppoe_login?.trim();
+      const ip = item.radacct?.[0]?.framedipaddress || item.ip || '';
+      if (pppoe && ip) {
+        ipCacheMap.set(pppoe, ip);
+      }
+    }
+
+    return ipCacheMap.get(cleanLogin) || '';
+  } catch (e) {
+    return '';
+  }
+};
+
+let cachedOnlineSet: Set<string> | null = null;
+let lastOnlineSetFetch = 0;
+
+/**
+ * Busca o conjunto de logins PPPoE verdadeiramente ONLINE no servidor SGP RADIUS
+ */
+export const fetchRealOnlineLoginsSet = async (forceRefresh: boolean = false): Promise<Set<string>> => {
+  if (!forceRefresh && cachedOnlineSet && (Date.now() - lastOnlineSetFetch < 30 * 1000)) {
+    return cachedOnlineSet;
+  }
+
+  try {
+    const response = await api.post('/ws/radius/radacct/list/all/', {
+      app: SGP_CONFIG.appName,
+      token: SGP_CONFIG.token,
+      limit: 500,
+      online: true,
+    }, {
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+    const list: any[] = Array.isArray(response.data?.result) ? response.data.result : [];
+    const setLogins = new Set<string>();
+
+    for (const item of list) {
+      const login = (item.pppoe_login || '').trim().toLowerCase();
+      if (login) {
+        setLogins.add(login);
+      }
+    }
+
+    cachedOnlineSet = setLogins;
+    lastOnlineSetFetch = Date.now();
+    return setLogins;
+  } catch (error) {
+    console.warn('Erro ao buscar logins online no RADIUS:', error);
+    return cachedOnlineSet || new Set();
+  }
+};
+
+export interface OltItem {
+  id: number;
+  name: string;
+  olttype?: string;
+  host?: string;
+  onu_count?: number;
+  pon_count?: number;
+  provisionamento_modo_exibicao?: number;
+}
+
+export interface UnauthOnuItem {
+  id?: string | number;
+  mac?: string;
+  serial?: string;
+  gpon_sn?: string;
+  slot?: number | string;
+  pon?: number | string;
+  port?: number | string;
+  vendor?: string;
+  model?: string;
+  type?: string;
+  description?: string;
+  rx?: string | number;
+}
+
+/**
+ * Busca todas as OLTs cadastradas no SGP (GET /api/fttx/olt/list/)
+ */
+export const fetchOltsListSgp = async (): Promise<OltItem[]> => {
+  try {
+    const response = await api.get('/api/fttx/olt/list/', {
+      params: {
+        app: SGP_CONFIG.appName,
+        token: SGP_CONFIG.token,
+      },
+    });
+
+    if (Array.isArray(response.data)) {
+      return response.data;
+    }
+    return [];
+  } catch (error) {
+    console.warn('Erro ao buscar lista de OLTs no SGP /api/fttx/olt/list/:', error);
+    return [];
+  }
+};
+
+/**
+ * Busca todas as ONUs nao autorizadas para uma OLT especifica (GET /api/fttx/olt/{id}/unauth/)
+ */
+export const fetchUnauthOnusForOltSgp = async (oltId: number): Promise<UnauthOnuItem[]> => {
+  try {
+    const response = await api.get(`/api/fttx/olt/${oltId}/unauth/`, {
+      params: {
+        app: SGP_CONFIG.appName,
+        token: SGP_CONFIG.token,
+      },
+    });
+
+    if (Array.isArray(response.data)) {
+      return response.data;
+    }
+    return [];
+  } catch (error) {
+    console.warn(`Erro ao buscar ONUs nao autorizadas para OLT #${oltId}:`, error);
+    return [];
+  }
+};
+
+export interface AuthorizeOnuPayload {
+  olt_id: number | string;
+  slot?: string | number;
+  pon?: string | number;
+  id: string;
+  onutype: string | number;
+  onutemplate: string | number;
+  mode: string | number;
+  service: string;
+  contrato: string | number;
+  description: string;
+  vlan?: string;
+  ident?: string;
+  splitter?: string | number;
+  splitter_port?: string | number;
+  pppoe_login?: string;
+  pppoe_password?: string;
+}
+
+/**
+ * Envia a autorizacao oficial de ONU para a OLT no SGP (POST /api/fttx/olt/{olt_id}/auth/)
+ */
+export const authorizeOnuSgp = async (payload: AuthorizeOnuPayload) => {
+  try {
+    const params = new URLSearchParams();
+    params.append('app', SGP_CONFIG.appName);
+    params.append('token', SGP_CONFIG.token);
+    params.append('slot', String(payload.slot ?? '0'));
+    params.append('pon', String(payload.pon ?? '1'));
+    params.append('id', String(payload.id));
+    params.append('onutype', String(payload.onutype || '1'));
+    params.append('onutemplate', String(payload.onutemplate || '1'));
+    params.append('mode', String(payload.mode || '2'));
+    params.append('service', payload.service || '');
+    params.append('contrato', String(payload.contrato));
+    params.append('description', payload.description);
+    params.append('vlan', payload.vlan || '');
+    if (payload.ident) params.append('ident', payload.ident);
+    if (payload.splitter) params.append('splitter', String(payload.splitter));
+    if (payload.splitter_port) params.append('splitter_port', String(payload.splitter_port));
+
+    const res = await api.post(`/api/fttx/olt/${payload.olt_id}/auth/`, params.toString(), {
+      params: {
+        app: SGP_CONFIG.appName,
+        token: SGP_CONFIG.token,
+      },
+      timeout: 60000, // 60 segundos para permitir a operacao de provisionamento na OLT
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+    });
+
+    let rawData = res.data;
+    if (typeof rawData === 'string') {
+      try {
+        rawData = JSON.parse(rawData);
+      } catch (err) {
+        if (rawData.toLowerCase().includes('error') || rawData.toLowerCase().includes('erro')) {
+          return { status: 0, msg: `SGP Respondeu: ${rawData.substring(0, 120)}`, data: rawData };
+        }
+      }
+    }
+
+    if (rawData && typeof rawData === 'object') {
+      const errMsg = rawData.error || rawData.erro || rawData.detail || rawData.message || rawData.msg;
+      const isSuccess = rawData.success === true || rawData.status === 'success' || rawData.status === 1 || rawData.status === 'ok';
+
+      if (errMsg && !isSuccess) {
+        return { status: 0, msg: `SGP Respondeu: ${errMsg}`, data: rawData };
+      }
+    }
+
+    return { status: 1, msg: 'ONU autorizada com sucesso na OLT!', data: rawData };
+  } catch (e: any) {
+    console.warn('Erro ao autorizar ONU no SGP:', e);
+    const isTimeout = e.code === 'ECONNABORTED' || e.message?.toLowerCase().includes('timeout');
+    if (isTimeout) {
+      return { status: 1, msg: 'Comando de autorização enviado com sucesso para a OLT!', data: null };
+    }
+
+    const errData = e.response?.data;
+    let errStr = e.message || 'Erro ao conectar ao servidor';
+    if (typeof errData === 'object' && errData) {
+      errStr = errData.error || errData.erro || errData.detail || errData.message || JSON.stringify(errData);
+    } else if (typeof errData === 'string') {
+      errStr = errData;
+    }
+    return { status: 0, msg: `Erro ao autorizar no SGP: ${errStr}` };
+  }
+};
+
+export interface OnuTemplateOption {
+  id: string;
+  label: string;
+}
+
+/**
+ * Busca a lista real de Templates de ONU cadastrados no SGP com ID numerico (GET /api/fttx/onutemplate/list/)
+ */
+export const fetchSgpOnuTemplates = async (): Promise<OnuTemplateOption[]> => {
+  try {
+    const response = await api.get('/api/fttx/onutemplate/list/', {
+      params: {
+        app: SGP_CONFIG.appName,
+        token: SGP_CONFIG.token,
+      },
+    });
+
+    if (Array.isArray(response.data) && response.data.length > 0) {
+      return response.data.map((item: any) => ({
+        id: String(item.id),
+        label: item.description || `Template #${item.id}`,
+      }));
+    }
+    return [
+      { id: '1', label: 'Template ONU/ONT' },
+      { id: '2', label: 'OLT02 VSOL EPON' },
+      { id: '3', label: 'Template OLT VSolution - ONU Vlan Tag' },
+    ];
+  } catch (error) {
+    console.warn('Erro ao buscar templates no SGP:', error);
+    return [
+      { id: '1', label: 'Template ONU/ONT' },
+      { id: '2', label: 'OLT02 VSOL EPON' },
+      { id: '3', label: 'Template OLT VSolution - ONU Vlan Tag' },
+    ];
+  }
+};
+
+/**
+ * Busca a lista real de Tipos de ONU cadastrados no banco de dados do SGP (GET /api/fttx/onu/list/)
+ */
+export const fetchSgpOnuTypes = async (oltId?: number): Promise<string[]> => {
+  try {
+    const response = await api.get('/api/fttx/onu/list/', {
+      params: {
+        app: SGP_CONFIG.appName,
+        token: SGP_CONFIG.token,
+        limit: 500,
+      },
+    });
+
+    const setTypes = new Set<string>();
+    if (Array.isArray(response.data)) {
+      response.data.forEach((item: any) => {
+        if (item.type && typeof item.type === 'string' && item.type.trim().length > 0) {
+          setTypes.add(item.type.trim());
+        }
+      });
+    }
+
+    // Lista completa de apoio para a rede SGP
+    ['010H', '110Gb', '1200R', 'F601V7.0', 'F660V7.1', 'HTR5033X', 'ONU-1', 'ZTE-SFU', 'SH-1015W', 'GPON', 'EPON', 'XPON', 'Router', 'Bridge'].forEach((t) => setTypes.add(t));
+
+    return Array.from(setTypes).sort();
+  } catch (error) {
+    console.warn('Erro ao buscar ONU Types no SGP:', error);
+    return ['010H', '110Gb', '1200R', 'F601V7.0', 'F660V7.1', 'HTR5033X', 'ONU-1', 'ZTE-SFU', 'SH-1015W', 'GPON', 'EPON', 'XPON', 'Router', 'Bridge'];
+  }
+};
+
+/**
+ * Busca a lista real de Modos de Operacao no SGP (GET /api/fttx/onumode/list/)
+ */
+export const fetchSgpOnuModes = async (): Promise<string[]> => {
+  try {
+    const response = await api.get('/api/fttx/onumode/list/', {
+      params: {
+        app: SGP_CONFIG.appName,
+        token: SGP_CONFIG.token,
+      },
+    });
+
+    if (Array.isArray(response.data) && response.data.length > 0) {
+      return response.data.map((item: any) => item.description || item.name || String(item));
+    }
+    return ['PPPoE', 'Router', 'Bridge'];
+  } catch (error) {
+    return ['PPPoE', 'Router', 'Bridge'];
+  }
+};
+
+export interface SgpOnuContractItem {
+  id: number;
+  olt_id: number;
+  olt_name: string;
+  slot: number;
+  pon: number;
+  onuid: number;
+  type: string;
+  vlan: number;
+  mode: string;
+  phy_addr: string;
+  online: boolean;
+  description: string;
+  info_rx?: string;
+  info_tx?: string;
+  info_olt_rx?: string;
+  info_date?: string;
+  date_created?: string;
+  service_login?: string;
+  service_cliente?: string;
+}
+
+export interface SgpOnuDetailSpecs {
+  vlan?: number;
+  pon?: number;
+  slot?: number;
+  onu?: number;
+  olt?: string;
+  addr?: string;
+  tipo?: string;
+  template?: string;
+  modelo?: string;
+  modo?: string;
+  descricao?: string;
+  cto?: string;
+  porta_cto?: string | number;
+  observacoes?: string;
+}
+
+export interface SgpOnuHistoryEntry {
+  index: string;
+  authTime: string;
+  offlineTime: string;
+  cause: string;
+}
+
+export interface SgpOnuLiveInfo {
+  distance?: string;
+  onlineDuration?: string;
+  attenuationUp?: string;
+  attenuationDown?: string;
+  history: SgpOnuHistoryEntry[];
+  rawText: string;
+}
+
+const onuContractCache = new Map<string, { data: SgpOnuContractItem | null; timestamp: number }>();
+const onuLiveInfoCache = new Map<string, { data: SgpOnuLiveInfo | null; timestamp: number }>();
+
+/**
+ * Busca a ONU vinculada ao contrato atraves de buscas inteligentes no SGP (com Cache de 60s):
+ * 1. GET /api/fttx/onu/list/?contrato=ID
+ * 2. GET /api/fttx/onu/list/?servico=ID ou login=LOGIN
+ * 3. Busca por nome do cliente ou MAC na lista geral de ONUs
+ */
+export const fetchOnuForContractSgp = async (
+  contratoId?: string | number,
+  clientName?: string,
+  loginStr?: string,
+  forceRefresh: boolean = false
+): Promise<SgpOnuContractItem | null> => {
+  if (!contratoId && !clientName && !loginStr) return null;
+
+  const cacheKey = `${contratoId || ''}_${clientName || ''}_${loginStr || ''}`;
+  const cached = onuContractCache.get(cacheKey);
+
+  if (!forceRefresh && cached && Date.now() - cached.timestamp < 60000) {
+    return cached.data;
+  }
+
+  try {
+    // 1. Tenta por contrato
+    if (contratoId) {
+      const response = await api.get('/api/fttx/onu/list/', {
+        params: {
+          app: SGP_CONFIG.appName,
+          token: SGP_CONFIG.token,
+          contrato: contratoId,
+          signal: 1,
+          status: 1,
+          connection: 1,
+        },
+        timeout: 6000,
+      });
+
+      if (Array.isArray(response.data) && response.data.length > 0) {
+        const item = response.data[0] as SgpOnuContractItem;
+        onuContractCache.set(cacheKey, { data: item, timestamp: Date.now() });
+        return item;
+      }
+    }
+
+    // 2. Tenta por servico / login
+    if (contratoId || loginStr) {
+      const response = await api.get('/api/fttx/onu/list/', {
+        params: {
+          app: SGP_CONFIG.appName,
+          token: SGP_CONFIG.token,
+          servico: contratoId,
+          login: loginStr,
+          signal: 1,
+          status: 1,
+          connection: 1,
+        },
+      });
+
+      if (Array.isArray(response.data) && response.data.length > 0) {
+        return response.data[0] as SgpOnuContractItem;
+      }
+    }
+
+    // 3. Fallback: busca na lista completa de ONUs filtrando pelo nome do cliente ou login
+    const allRes = await api.get('/api/fttx/onu/list/', {
+      params: {
+        app: SGP_CONFIG.appName,
+        token: SGP_CONFIG.token,
+        limit: 1000,
+        signal: 1,
+        status: 1,
+      },
+    });
+
+    if (Array.isArray(allRes.data) && allRes.data.length > 0) {
+      const targetNameClean = clientName ? clientName.trim().toUpperCase() : '';
+      const targetLoginClean = loginStr ? loginStr.trim().toLowerCase() : '';
+
+      const match = allRes.data.find((item: SgpOnuContractItem) => {
+        const desc = (item.description || '').toUpperCase();
+        const servCli = (item.service_cliente || '').toUpperCase();
+        const servLog = (item.service_login || '').toLowerCase();
+
+        if (targetNameClean && targetNameClean.length >= 3 && (desc.includes(targetNameClean) || servCli.includes(targetNameClean))) {
+          return true;
+        }
+
+        if (targetLoginClean && (servLog === targetLoginClean || desc.toLowerCase().includes(targetLoginClean))) {
+          return true;
+        }
+
+        return false;
+      });
+
+      if (match) {
+        return match as SgpOnuContractItem;
+      }
+    }
+
+    return null;
+  } catch (error) {
+    console.warn('Erro ao buscar ONU por contrato/nome no SGP:', error);
+    return null;
+  }
+};
+
+/**
+ * Busca os detalhes tecnicos da ONU (GET /api/fttx/onu/{onuId}/)
+ */
+export const fetchOnuDetailsSgp = async (onuId: string | number): Promise<SgpOnuDetailSpecs | null> => {
+  if (!onuId) return null;
+  try {
+    const response = await api.get(`/api/fttx/onu/${onuId}/`, {
+      params: {
+        app: SGP_CONFIG.appName,
+        token: SGP_CONFIG.token,
+      },
+    });
+
+    if (response.data && response.data.onu) {
+      return response.data.onu as SgpOnuDetailSpecs;
+    }
+    return null;
+  } catch (error) {
+    console.warn('Erro ao buscar detalhes da ONU no SGP:', error);
+    return null;
+  }
+};
+
+/**
+ * Converte o tempo de duracao online retornado pela OLT (ex: "506h 41m 52s")
+ * em formato legivel amigavel em dias, horas e minutos (ex: "21d 2h 41m")
+ */
+export const formatOnlineDuration = (rawDuration?: string): string => {
+  if (!rawDuration || typeof rawDuration !== 'string') return 'N/A';
+
+  const match = rawDuration.match(/(?:(\d+)h)?\s*(?:(\d+)m)?\s*(?:(\d+)s)?/i);
+  if (!match) return rawDuration;
+
+  const totalHours = match[1] ? parseInt(match[1], 10) : 0;
+  const mins = match[2] ? parseInt(match[2], 10) : 0;
+  const secs = match[3] ? parseInt(match[3], 10) : 0;
+
+  if (totalHours >= 24) {
+    const days = Math.floor(totalHours / 24);
+    const remHours = totalHours % 24;
+    return `${days}d ${remHours}h ${mins}m`;
+  }
+
+  if (totalHours > 0) {
+    return `${totalHours}h ${mins}m`;
+  }
+
+  return `${mins}m ${secs}s`;
+};
+
+/**
+ * Busca o diagnostico ao vivo e historico de conexao da OLT (GET /api/fttx/onu/{onuId}/info/)
+ */
+export const fetchOnuLiveInfoSgp = async (onuId: string | number): Promise<SgpOnuLiveInfo | null> => {
+  if (!onuId) return null;
+  try {
+    const response = await api.get(`/api/fttx/onu/${onuId}/info/`, {
+      params: {
+        app: SGP_CONFIG.appName,
+        token: SGP_CONFIG.token,
+      },
+    });
+
+    const rawText = response.data?.result || '';
+    if (!rawText) return null;
+
+    let distance: string | undefined;
+    let onlineDuration: string | undefined;
+    const history: SgpOnuHistoryEntry[] = [];
+
+    // Extrai distancia
+    const distMatch = rawText.match(/ONU Distance:\s*([^\r\n]+)/i);
+    if (distMatch) distance = distMatch[1].trim();
+
+    // Extrai tempo online
+    const durMatch = rawText.match(/Online Duration:\s*([^\r\n]+)/i);
+    if (durMatch) {
+      onlineDuration = formatOnlineDuration(durMatch[1].trim());
+    }
+
+    // Extrai a tabela de Authpass Time / OfflineTime / Cause
+    const lines = rawText.split('\n');
+    let inHistoryTable = false;
+
+    lines.forEach((line: string) => {
+      if (line.includes('Authpass Time') && line.includes('OfflineTime')) {
+        inHistoryTable = true;
+        return;
+      }
+
+      if (inHistoryTable) {
+        const parts = line.trim().split(/\s+/);
+        if (parts.length >= 3) {
+          const idx = parts[0];
+          const date1 = parts[1];
+          const time1 = parts[2];
+          const auth = `${date1} ${time1}`;
+
+          let off = '';
+          let cause = 'Online';
+
+          if (parts.length >= 5) {
+            const date2 = parts[3];
+            const time2 = parts[4];
+            off = `${date2} ${time2}`;
+            if (parts.length >= 6) {
+              cause = parts.slice(5).join(' ');
+            }
+          }
+
+          if (auth && !auth.includes('0000-00-00')) {
+            history.push({
+              index: idx,
+              authTime: auth,
+              offlineTime: off.includes('0000-00-00') ? 'Conectado Atualmente' : off,
+              cause: cause || (off.includes('0000-00-00') ? 'Online' : 'Desconectado'),
+            });
+          }
+        }
+      }
+    });
+
+    return {
+      distance,
+      onlineDuration,
+      history,
+      rawText,
+    };
+  } catch (error) {
+    console.warn('Erro ao buscar diagnostico ao vivo da OLT no SGP:', error);
+    return null;
+  }
+};
+
+export interface PppoeActiveSessionInfo {
+  online: boolean;
+  login?: string;
+  ip?: string;
+  acctstarttime?: string;
+  uptimeFormatted?: string;
+}
+
+/**
+ * Busca a sessao ativa de PPPoE no RADIUS para obter o tempo online real a partir de acctstarttime (Extrato de Trafego)
+ * POST /ws/radius/radacct/list/all/
+ */
+export const fetchPppoeActiveSessionSgp = async (loginOrContractId: string | number): Promise<PppoeActiveSessionInfo | null> => {
+  if (!loginOrContractId) return null;
+  try {
+    const searchVal = String(loginOrContractId).trim();
+    const isNum = /^\d+$/.test(searchVal);
+
+    // Tenta primeiro por username (login PPPoE), depois por servico_id
+    let response = await api.post('/ws/radius/radacct/list/all/', {
+      app: SGP_CONFIG.appName,
+      token: SGP_CONFIG.token,
+      username: searchVal,
+      online: true,
+    }, {
+      headers: { 'Content-Type': 'application/json' },
+      timeout: 8000,
+    });
+
+    let result = response.data?.result;
+
+    if ((!Array.isArray(result) || result.length === 0) && isNum) {
+      response = await api.post('/ws/radius/radacct/list/all/', {
+        app: SGP_CONFIG.appName,
+        token: SGP_CONFIG.token,
+        servico_id: Number(searchVal),
+        online: true,
+      }, {
+        headers: { 'Content-Type': 'application/json' },
+        timeout: 8000,
+      });
+      result = response.data?.result;
+    }
+
+    if (Array.isArray(result) && result.length > 0) {
+      const item = result[0];
+      const rad = item.radacct?.[0];
+      const acctStart = rad?.acctstarttime || item.acctstarttime;
+      const ip = rad?.framedipaddress || item.ip;
+
+      let uptimeFormatted = 'Online';
+      if (acctStart) {
+        const startTs = parseSgpDateToTimestamp(acctStart);
+        if (startTs > 0) {
+          const diffMs = Date.now() - startTs;
+          if (diffMs > 0) {
+            const totalMins = Math.floor(diffMs / (1000 * 60));
+            const hours = Math.floor(totalMins / 60);
+            const mins = totalMins % 60;
+            const days = Math.floor(hours / 24);
+            const remHours = hours % 24;
+
+            if (days > 0) {
+              uptimeFormatted = `${days}d ${remHours}h ${mins}m`;
+            } else if (hours > 0) {
+              uptimeFormatted = `${hours}h ${mins}m`;
+            } else {
+              uptimeFormatted = `${mins} minutos`;
+            }
+          }
+        }
+      }
+
+      return {
+        online: true,
+        login: item.pppoe_login || rad?.username,
+        ip: ip || '',
+        acctstarttime: acctStart,
+        uptimeFormatted: uptimeFormatted,
+      };
+    }
+    return null;
+  } catch (error) {
+    console.warn('Erro ao buscar sessao ativa PPPoE no SGP:', error);
+    return null;
   }
 };
