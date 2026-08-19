@@ -1804,3 +1804,108 @@ export const fetchPppoeActiveSessionSgp = async (loginOrContractId: string | num
     return null;
   }
 };
+
+/* ============================================================================
+ * CONSULTA DE OLT E ONUS POR OLT (MENU CONSULTA DE ONU)
+ * ============================================================================ */
+
+export interface OltOnuAddress {
+  cmun?: string | null;
+  bairro?: string;
+  cep?: string;
+  logradouro?: string;
+  numero?: number | string;
+  complemento?: string;
+  cidade?: string;
+  pontoreferencia?: string;
+  uf?: string;
+  map_ll?: string;
+}
+
+export interface OltOnuItem {
+  id: number;
+  olt_id: number;
+  olt_name: string;
+  slot: number;
+  pon: number;
+  onuid: number;
+  type: string;
+  mode?: string;
+  phy_addr: string;
+  login?: string | null;
+  notes?: string;
+  address?: OltOnuAddress;
+  online: boolean;
+  description: string;
+  info_rx?: string;
+  info_tx?: string;
+  info_olt_rx?: string;
+  info_date?: string;
+  service_id?: number;
+  service_login?: string;
+  service_contrato?: number;
+  service_cliente?: string;
+  service_status?: number;
+  date_created?: string;
+}
+
+/**
+ * Lista todas as OLTs cadastradas no SGP
+ * GET /api/fttx/olt/list/?app=App&token={token}
+ */
+export const fetchOltListSgp = async (): Promise<OltItem[]> => {
+  try {
+    const response = await api.get('/api/fttx/olt/list/', {
+      params: {
+        app: SGP_CONFIG.appName,
+        token: SGP_CONFIG.token,
+      },
+    });
+
+    if (Array.isArray(response.data)) {
+      return response.data;
+    }
+    return [];
+  } catch (error) {
+    console.warn('Erro ao buscar lista de OLTs no SGP:', error);
+    return [];
+  }
+};
+
+/**
+ * Lista todas as ONUs vinculadas a uma OLT especifica no SGP
+ * GET /api/fttx/olt/{olt_id}/onu/list/?app=App&token={token}&signal=1&connection=1&address=1
+ */
+export const fetchOnusForOltSgp = async (
+  oltId: number,
+  filters?: {
+    slot?: number;
+    pon?: number;
+    phy_addr?: string;
+    login?: string;
+    contrato?: number;
+    servico?: number;
+    status?: number;
+  }
+): Promise<OltOnuItem[]> => {
+  try {
+    const params: any = {
+      app: SGP_CONFIG.appName,
+      token: SGP_CONFIG.token,
+      signal: 1,
+      connection: 1,
+      address: 1,
+      ...filters,
+    };
+
+    const response = await api.get(`/api/fttx/olt/${oltId}/onu/list/`, { params });
+
+    if (Array.isArray(response.data)) {
+      return response.data;
+    }
+    return [];
+  } catch (error) {
+    console.warn(`Erro ao buscar ONUs da OLT #${oltId} no SGP:`, error);
+    return [];
+  }
+};

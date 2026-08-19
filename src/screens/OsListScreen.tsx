@@ -25,6 +25,7 @@ interface Props {
   onOpenClientSearch: () => void;
   onOpenOfflineClients: () => void;
   onOpenAuthorizeOnu?: () => void;
+  onOpenOltConsultation?: () => void;
   onLogout: () => void;
 }
 
@@ -106,6 +107,7 @@ export const OsListScreen: React.FC<Props> = ({
   onOpenClientSearch,
   onOpenOfflineClients,
   onOpenAuthorizeOnu,
+  onOpenOltConsultation,
   onLogout,
 }) => {
   const [selectedTab, setSelectedTab] = useState<number>(0); // 0=Abertas, 1=Em Execução, 2=Finalizadas (7d)
@@ -534,6 +536,26 @@ export const OsListScreen: React.FC<Props> = ({
                 <View style={{ flex: 1 }}>
                   <Text style={styles.menuItemText}>Autorizar ONU</Text>
                   <Text style={styles.menuItemSubText}>Provisionamento direto na OLT</Text>
+                </View>
+              </TouchableOpacity>
+
+              {/* CONSULTA DE ONU POR OLT */}
+              <TouchableOpacity
+                style={styles.menuItemRow}
+                onPress={() => {
+                  setIsMenuOpen(false);
+                  if (onOpenOltConsultation) {
+                    onOpenOltConsultation();
+                  }
+                }}
+                activeOpacity={0.7}
+              >
+                <View style={styles.menuItemIconCircle}>
+                  <Feather name="server" size={18} color="#38BDF8" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.menuItemText}>Consulta de ONU</Text>
+                  <Text style={styles.menuItemSubText}>Listar OLTs e ONUs por OLT</Text>
                 </View>
               </TouchableOpacity>
             </View>

@@ -10,6 +10,7 @@ import { OsCloseScreen } from './src/screens/OsCloseScreen';
 import { ClientSearchScreen } from './src/screens/ClientSearchScreen';
 import { OfflineClientsScreen } from './src/screens/OfflineClientsScreen';
 import { AuthorizeOnuScreen } from './src/screens/AuthorizeOnuScreen';
+import { OltConsultationScreen } from './src/screens/OltConsultationScreen';
 import { ChamadoItem } from './src/types/sgp';
 
 export type RootStackParamList = {
@@ -20,6 +21,7 @@ export type RootStackParamList = {
   ClientSearch: undefined;
   OfflineClients: undefined;
   AuthorizeOnu: undefined;
+  OltConsultation: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -97,6 +99,7 @@ export default function App() {
                   onOpenClientSearch={() => navigation.navigate('ClientSearch')}
                   onOpenOfflineClients={() => navigation.navigate('OfflineClients')}
                   onOpenAuthorizeOnu={() => navigation.navigate('AuthorizeOnu')}
+                  onOpenOltConsultation={() => navigation.navigate('OltConsultation')}
                   onLogout={() => navigation.replace('Login')}
                 />
               )}
@@ -121,6 +124,14 @@ export default function App() {
             <Stack.Screen name="AuthorizeOnu">
               {({ navigation }) => (
                 <AuthorizeOnuScreen
+                  onBackToOs={() => navigation.goBack()}
+                />
+              )}
+            </Stack.Screen>
+
+            <Stack.Screen name="OltConsultation">
+              {({ navigation }) => (
+                <OltConsultationScreen
                   onBackToOs={() => navigation.goBack()}
                 />
               )}
