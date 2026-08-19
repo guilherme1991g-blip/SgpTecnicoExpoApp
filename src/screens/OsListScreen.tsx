@@ -79,6 +79,42 @@ const isWithinLast7Days = (dateStr?: string): boolean => {
   return diff <= sevenDaysMs && diff >= -(24 * 60 * 60 * 1000);
 };
 
+/**
+ * Calcula a quantidade de dias de atraso de uma O.S. aberta ou em execução.
+ * Retorna > 0 se estiver atrasada (com base na data de cadastro ou agendamento).
+ */
+const getOsOverdueDays = (item: ChamadoItem): number => {
+  const rawOsStatus = item.os_status?.toString().trim();
+  const rawOcStatus = item.oc_status?.toString().trim();
+  const osDesc = (item.os_status_descricao || '').toLowerCase();
+  const ocDesc = (item.oc_status_descricao || '').toLowerCase();
+  const hasDataEnc = Boolean(item.oc_data_encerramento && item.oc_data_encerramento.trim().length > 0);
+  const hasDataFin = Boolean(item.os_data_finalizacao && item.os_data_finalizacao.trim().length > 0);
+
+  // Se já foi encerrada ou finalizada, não conta como atrasada
+  if (
+    rawOsStatus === '1' ||
+    rawOcStatus === '1' ||
+    osDesc.includes('encerrad') ||
+    osDesc.includes('finalizad') ||
+    ocDesc.includes('encerrad') ||
+    ocDesc.includes('finalizad') ||
+    hasDataEnc ||
+    hasDataFin
+  ) {
+    return 0;
+  }
+
+  const dateRaw = item.os_data_agendamento || item.os_data_cadastro || item.oc_data_cadastro || '';
+  const ts = parseSgpDateToTimestamp(dateRaw);
+  if (!ts || ts <= 0) return 0;
+
+  const diffMs = Date.now() - ts;
+  if (diffMs <= 0) return 0;
+
+  return Math.floor(diffMs / (1000 * 60 * 60 * 24));
+};
+
 const formatDateHeader = (
   dateRaw?: string
 ): { key: string; dayName: string; dayNum: string; monthStr: string; dayMonthStr: string } => {
@@ -190,6 +226,11 @@ export const OsListScreen: React.FC<Props> = ({
   const countExecucao = useMemo(() => chamados.filter((x) => getItemStatus(x) === 1).length, [chamados]);
   const countFinalizadas = useMemo(() => chamados.filter((x) => getItemStatus(x) === 2).length, [chamados]);
 
+  // Quantidade de O.S. Atrasadas há mais de 3 dias
+  const countAtrasadas3Dias = useMemo(() => {
+    return chamados.filter((x) => getOsOverdueDays(x) >= 3).length;
+  }, [chamados]);
+
   // Extrai lista única de datas para o Carrossel Calendário (DA MAIS NOVA PARA A MAIS VELHA)
   const dateStrip = useMemo(() => {
     const datesMap: {
@@ -227,7 +268,7 @@ export const OsListScreen: React.FC<Props> = ({
     }));
   }, [chamados, selectedTab]);
 
-  // ORDENAÇÃO ESTRITA DA MAIS NOVA PARA A MAIS VELHA EM TODAS AS VISUALIZAÇÕES
+  // ORDENAÇÃO: O.S. ATRASADAS HÁ +3 DIAS DESTACADAS NO TOPO ABSOLUTO
   const filteredChamados = useMemo(() => {
     const list = chamados.filter((item) => {
       const status = getItemStatus(item);
@@ -258,8 +299,24 @@ export const OsListScreen: React.FC<Props> = ({
       );
     });
 
-    // Ordenação estrita: DA MAIS NOVA PARA A MAIS VELHA (dateB - dateA)
+    // Ordenação estrita:
+    // 1º: O.S. ATRASADAS HÁ MAIS DE 3 DIAS NO TOPO ABSOLUTO (Em vermelho)
+    // 2º: Demais O.S. da mais nova para a mais velha (dateB - dateA)
     return list.sort((a, b) => {
+      const daysA = getOsOverdueDays(a);
+      const daysB = getOsOverdueDays(b);
+
+      const isOverdueA = daysA >= 3;
+      const isOverdueB = daysB >= 3;
+
+      if (isOverdueA && !isOverdueB) return -1;
+      if (!isOverdueA && isOverdueB) return 1;
+
+      if (isOverdueA && isOverdueB) {
+        // Entre as atrasadas, a com mais dias de atraso fica em primeiro no topo
+        return daysB - daysA;
+      }
+
       const dateA = parseSgpDateToTimestamp(a.oc_data_encerramento || a.os_data_finalizacao || a.os_data_agendamento || a.oc_data_cadastro);
       const dateB = parseSgpDateToTimestamp(b.oc_data_encerramento || b.os_data_finalizacao || b.os_data_agendamento || b.oc_data_cadastro);
       return dateB - dateA;
@@ -311,6 +368,16 @@ export const OsListScreen: React.FC<Props> = ({
           </TouchableOpacity>
         ) : null}
       </View>
+
+      {/* BANNER DE ALERTA DE O.S. ATRASADAS HÁ MAIS DE 3 DIAS NO TOPO DA TELA */}
+      {countAtrasadas3Dias > 0 && selectedTab !== 2 ? (
+        <View style={styles.atrasadaTopAlertBanner}>
+          <Feather name="alert-triangle" size={16} color="#EF4444" style={{ marginRight: 8 }} />
+          <Text style={styles.atrasadaTopAlertText}>
+            <Text style={{ fontWeight: '800', color: '#EF4444' }}>{countAtrasadas3Dias} O.S. Atrasada{countAtrasadas3Dias > 1 ? 's' : ''} (+3 dias)</Text> destacada{countAtrasadas3Dias > 1 ? 's' : ''} no topo em vermelho!
+          </Text>
+        </View>
+      ) : null}
 
       {/* Modern Status Filter Pills (Com ScrollView para caber perfeitamente) */}
       <View style={styles.pillsContainer}>
@@ -614,13 +681,18 @@ const ModernTimelineOsCard: React.FC<CardProps> = ({ chamado, onPress }) => {
 
   const isEmAtendimento = !isEncerrada && (rawOsStatus === '2' || rawOcStatus === '2' || osDesc.includes('execuç'));
 
+  const overdueDays = getOsOverdueDays(chamado);
+  const isAtrasada3Dias = overdueDays >= 3;
+
   const getStatusColor = () => {
+    if (isAtrasada3Dias) return '#EF4444'; // Vermelho absoluto para O.S. atrasada +3 dias
     if (isEncerrada) return '#10B981'; // Green (Encerrada)
     if (isEmAtendimento) return '#F59E0B'; // Amber (Em Execução)
     return '#38BDF8'; // Cyan/Blue (Aberta)
   };
 
   const getStatusLabel = () => {
+    if (isAtrasada3Dias) return `ATRASADA (${overdueDays}d)`;
     if (isEncerrada) return 'Finalizada';
     if (isEmAtendimento) return 'Em Execução';
     return 'Aberta';
@@ -643,7 +715,14 @@ const ModernTimelineOsCard: React.FC<CardProps> = ({ chamado, onPress }) => {
 
   return (
     <TouchableOpacity
-      style={styles.cardContainer}
+      style={[
+        styles.cardContainer,
+        isAtrasada3Dias && {
+          borderColor: '#EF4444',
+          borderWidth: 1.5,
+          backgroundColor: 'rgba(239, 68, 68, 0.08)',
+        },
+      ]}
       onPress={onPress}
       activeOpacity={0.85}
     >
@@ -651,6 +730,16 @@ const ModernTimelineOsCard: React.FC<CardProps> = ({ chamado, onPress }) => {
       <View style={[styles.timelineBar, { backgroundColor: getStatusColor() }]} />
 
       <View style={styles.cardBody}>
+        {/* BANNER DE ALERTA DE ATRASO > 3 DIAS NO TOPO DO CARTÃO */}
+        {isAtrasada3Dias ? (
+          <View style={styles.atrasadaCardHeaderBadge}>
+            <Feather name="alert-triangle" size={13} color="#EF4444" style={{ marginRight: 6 }} />
+            <Text style={styles.atrasadaCardHeaderBadgeText}>
+              ⚠️ O.S. ATRASADA HÁ {overdueDays} DIAS
+            </Text>
+          </View>
+        ) : null}
+
         {/* TOP ROW: PROTOCOLO / ID & TIME BADGE */}
         <View style={styles.cardTopRow}>
           <View style={styles.protocolBadge}>
@@ -1142,5 +1231,40 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 13,
     marginLeft: 8,
+  },
+  atrasadaTopAlertBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    borderWidth: 1,
+    borderColor: '#EF4444',
+    marginHorizontal: 16,
+    marginBottom: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  atrasadaTopAlertText: {
+    color: '#F8FAFC',
+    fontSize: 12,
+    flex: 1,
+  },
+  atrasadaCardHeaderBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(239, 68, 68, 0.2)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+    marginBottom: 8,
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.4)',
+  },
+  atrasadaCardHeaderBadgeText: {
+    color: '#EF4444',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.5,
   },
 });
