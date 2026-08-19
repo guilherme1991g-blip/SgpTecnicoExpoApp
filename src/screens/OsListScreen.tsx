@@ -374,7 +374,7 @@ export const OsListScreen: React.FC<Props> = ({
         <View style={styles.atrasadaTopAlertBanner}>
           <Feather name="alert-triangle" size={16} color="#EF4444" style={{ marginRight: 8 }} />
           <Text style={styles.atrasadaTopAlertText}>
-            <Text style={{ fontWeight: '800', color: '#EF4444' }}>{countAtrasadas3Dias} O.S. Atrasada{countAtrasadas3Dias > 1 ? 's' : ''} (+3 dias)</Text> no topo em vermelho!
+            {countAtrasadas3Dias} O.S. Atrasada{countAtrasadas3Dias > 1 ? 's' : ''} (+3 dias) no topo em vermelho!
           </Text>
         </View>
       ) : null}
@@ -1245,8 +1245,9 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   atrasadaTopAlertText: {
-    color: '#F8FAFC',
+    color: '#EF4444',
     fontSize: 12,
+    fontWeight: 'bold',
     flex: 1,
   },
   atrasadaCardHeaderBadge: {
