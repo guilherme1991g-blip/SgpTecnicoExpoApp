@@ -135,6 +135,22 @@ export const OltConsultationScreen: React.FC<Props> = ({ onBackToOs }) => {
     return Array.from(setPons).sort((a, b) => a - b);
   }, [onus]);
 
+  // Estatísticas de Quantidade de ONUs por Porta PON
+  const ponStats = useMemo(() => {
+    const map: { [pon: number]: { total: number; online: number; offline: number } } = {};
+    onus.forEach((o) => {
+      if (o.pon !== undefined) {
+        if (!map[o.pon]) {
+          map[o.pon] = { total: 0, online: 0, offline: 0 };
+        }
+        map[o.pon].total += 1;
+        if (o.online) map[o.pon].online += 1;
+        else map[o.pon].offline += 1;
+      }
+    });
+    return map;
+  }, [onus]);
+
   // Estatísticas da OLT selecionada
   const stats = useMemo(() => {
     let onlineCount = 0;
@@ -459,30 +475,35 @@ export const OltConsultationScreen: React.FC<Props> = ({ onBackToOs }) => {
             </ScrollView>
           </View>
 
-          {/* FILTRO DE PONS */}
+          {/* FILTRO E QUANTIDADE DE ONUS POR PORTA PON */}
           {availablePons.length > 0 ? (
             <View style={styles.ponBar}>
+              <Text style={styles.ponBarLabel}>Quantidade de ONUs por Porta PON:</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16 }}>
                 <TouchableOpacity
                   style={[styles.ponChip, selectedPon === 'TODAS' && styles.ponChipActive]}
                   onPress={() => setSelectedPon('TODAS')}
                 >
                   <Text style={[styles.ponChipText, selectedPon === 'TODAS' && styles.ponChipTextActive]}>
-                    Todas as PONs
+                    Todas as PONs ({stats.total})
                   </Text>
                 </TouchableOpacity>
 
-                {availablePons.map((pNum) => (
-                  <TouchableOpacity
-                    key={pNum}
-                    style={[styles.ponChip, selectedPon === pNum && styles.ponChipActive]}
-                    onPress={() => setSelectedPon(pNum)}
-                  >
-                    <Text style={[styles.ponChipText, selectedPon === pNum && styles.ponChipTextActive]}>
-                      PON {pNum}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+                {availablePons.map((pNum) => {
+                  const pStat = ponStats[pNum] || { total: 0, online: 0, offline: 0 };
+                  const isSelected = selectedPon === pNum;
+                  return (
+                    <TouchableOpacity
+                      key={pNum}
+                      style={[styles.ponChip, isSelected && styles.ponChipActive]}
+                      onPress={() => setSelectedPon(isSelected ? 'TODAS' : pNum)}
+                    >
+                      <Text style={[styles.ponChipText, isSelected && styles.ponChipTextActive]}>
+                        PON {pNum}: <Text style={{ fontWeight: '800', color: isSelected ? '#38BDF8' : '#F8FAFC' }}>{pStat.total}</Text> ONUs ({pStat.online} on / {pStat.offline} off)
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </ScrollView>
             </View>
           ) : null}
@@ -729,6 +750,7 @@ const styles = StyleSheet.create({
   filterPillTextActive: { color: '#0D1117', fontWeight: '700' },
 
   ponBar: { marginTop: 8 },
+  ponBarLabel: { color: '#94A3B8', fontSize: 11, fontWeight: '600', marginLeft: 16, marginBottom: 4 },
   ponChip: {
     backgroundColor: '#161B22',
     paddingHorizontal: 10,
