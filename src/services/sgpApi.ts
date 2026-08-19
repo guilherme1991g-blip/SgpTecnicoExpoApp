@@ -785,9 +785,9 @@ export interface OfflineContractItem {
 }
 
 /**
- * Normaliza endereço para extrair o prefixo de 3 letras da rua/logradouro
+ * Extrai o nome limpo do logradouro real removendo acentos e prefixos genéricos (Rua, Av, Sítio, Povoado)
  */
-export const getAddressPrefix3 = (address?: string): string => {
+export const extractRealLogradouroName = (address?: string): string => {
   if (!address || typeof address !== 'string') return '';
   let clean = address
     .normalize('NFD')
@@ -795,14 +795,22 @@ export const getAddressPrefix3 = (address?: string): string => {
     .toUpperCase()
     .trim();
 
-  // Remove prefixos comuns de vias públicas
-  clean = clean.replace(/^(RUA|R\.|AV|AVENIDA|SITIO|SÍTIO|POVOADO|TRAVESSA|TV)\s+/, '');
+  // Remove prefixos genéricos de vias públicas
+  clean = clean.replace(/^(RUA|R\.|AV|AVENIDA|SITIO|SÍTIO|POVOADO|TRAVESSA|TV|ALAMEDA|CONJUNTO|ESTRADA|RODOVIA)\s+/, '');
+  return clean.trim();
+};
+
+/**
+ * Normaliza endereço para extrair o prefixo de 3 letras da rua/logradouro
+ */
+export const getAddressPrefix3 = (address?: string): string => {
+  const clean = extractRealLogradouroName(address);
   return clean.slice(0, 3);
 };
 
 /**
  * Busca contratos offline no SGP via POST /ws/radius/radacct/list/all/
- * e filtra pelas 3 primeiras letras do logradouro do cliente da O.S.
+ * e filtra estritamente pelas 3 primeiras letras do logradouro REAL do cliente da O.S.
  */
 export const fetchContratosOfflineRegiao = async (logradouroCliente?: string): Promise<{ total: number; clientesOffline: OfflineContractItem[] }> => {
   try {
@@ -817,20 +825,21 @@ export const fetchContratosOfflineRegiao = async (logradouroCliente?: string): P
 
     const list: OfflineContractItem[] = Array.isArray(response.data?.result) ? response.data.result : [];
 
-    const prefix = getAddressPrefix3(logradouroCliente);
+    const targetLogradouroClean = extractRealLogradouroName(logradouroCliente);
+    const prefix = targetLogradouroClean.slice(0, 3);
+
     if (!prefix || prefix.length < 2) {
       return { total: 0, clientesOffline: [] };
     }
 
     const filtered = list.filter((item) => {
-      const logrPrefix = getAddressPrefix3(item.endereco_logradouro);
-      const bairroPrefix = getAddressPrefix3(item.endereco_bairro);
-      const fullAddrUpper = (item.endereco || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+      const itemLogrClean = extractRealLogradouroName(item.endereco_logradouro);
+      const itemBairroClean = extractRealLogradouroName(item.endereco_bairro);
 
+      // O logradouro ou bairro real do item precisa comecar estritamente pelo prefixo de 3 letras do logradouro do cliente
       return (
-        (logrPrefix && logrPrefix === prefix) ||
-        (bairroPrefix && bairroPrefix === prefix) ||
-        fullAddrUpper.includes(prefix)
+        (itemLogrClean && itemLogrClean.startsWith(prefix)) ||
+        (itemBairroClean && itemBairroClean.startsWith(prefix))
       );
     });
 
