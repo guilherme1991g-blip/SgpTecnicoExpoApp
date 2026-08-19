@@ -1991,3 +1991,41 @@ export const deauthOnuSgp = async (onuId: number | string): Promise<{ success: b
     }
   }
 };
+
+export interface SgpFaturaItem {
+  id: number;
+  numero_documento?: number | string;
+  status: string;
+  statusid?: number;
+  vencimento: string;
+  vencimento_atualizado?: string;
+  data_pagamento?: string | null;
+  valor: number;
+  valorcorrigido?: number;
+  codigopix?: string | null;
+  link_completo?: string | null;
+  linhadigitavel?: string | null;
+  idtransacao?: string | null;
+}
+
+/**
+ * Busca todas as faturas do contrato no SGP
+ * POST /api/central/titulos/
+ */
+export const fetchFaturasContratoSgp = async (contratoId: number | string): Promise<SgpFaturaItem[]> => {
+  try {
+    const response = await api.post('/api/central/titulos/', {
+      app: SGP_CONFIG.appName,
+      token: SGP_CONFIG.token,
+      contrato: Number(contratoId),
+    });
+
+    if (response.data && Array.isArray(response.data.faturas)) {
+      return response.data.faturas;
+    }
+    return [];
+  } catch (error) {
+    console.warn(`Erro ao buscar faturas do contrato #${contratoId} no SGP:`, error);
+    return [];
+  }
+};

@@ -14,6 +14,7 @@ import {
   Modal,
   Alert,
   ScrollView,
+  Image,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import {
@@ -28,6 +29,8 @@ import {
   fetchOnuDetailsSgp,
   fetchOnuLiveInfoSgp,
   fetchPppoeActiveSessionSgp,
+  fetchFaturasContratoSgp,
+  SgpFaturaItem,
 } from '../services/sgpApi';
 import { Feather } from '@expo/vector-icons';
 
@@ -51,6 +54,44 @@ export const ClientSearchScreen: React.FC<Props> = ({ onBackToOs }) => {
   const [activeIp, setActiveIp] = useState<string>('');
   const [isLoadingOnu, setIsLoadingOnu] = useState(false);
   const [showLogsSection, setShowLogsSection] = useState(false);
+
+  // ESTADOS DO MODAL FINANCEIRO E FATURAS
+  const [selectedFinanceContract, setSelectedFinanceContract] = useState<{
+    contrato: UraClienteContrato;
+    cliente: UraClienteItem;
+  } | null>(null);
+  const [isFinanceModalVisible, setIsFinanceModalVisible] = useState(false);
+  const [isLoadingFaturas, setIsLoadingFaturas] = useState(false);
+  const [faturas, setFaturas] = useState<SgpFaturaItem[]>([]);
+  const [expandedPixFaturaId, setExpandedPixFaturaId] = useState<number | null>(null);
+
+  const handleOpenFinanceModal = async (contrato: UraClienteContrato, cliente: UraClienteItem) => {
+    setSelectedFinanceContract({ contrato, cliente });
+    setIsFinanceModalVisible(true);
+    setIsLoadingFaturas(true);
+    setFaturas([]);
+    setExpandedPixFaturaId(null);
+
+    try {
+      const data = await fetchFaturasContratoSgp(contrato.id);
+      // Filtra faturas em aberto/não pagas
+      const openFaturas = data.filter((f) => {
+        const statusLower = (f.status || '').toLowerCase();
+        return f.statusid !== 2 && !['pago', 'liquidado', 'cancelada', 'cancelado'].includes(statusLower);
+      });
+
+      // Ordena por vencimento crescente (já vencidas primeiro, depois as mais próximas)
+      openFaturas.sort((a, b) => (a.vencimento || '9999-99-99').localeCompare(b.vencimento || '9999-99-99'));
+
+      // Exibe as 3 próximas a vencer incluindo vencidas
+      setFaturas(openFaturas.slice(0, 3));
+    } catch (e) {
+      console.warn(`Erro ao carregar faturas do contrato #${contrato.id}:`, e);
+      setFaturas([]);
+    } finally {
+      setIsLoadingFaturas(false);
+    }
+  };
 
   const getRealPppoeLogin = (c?: UraClienteContrato): string => {
     if (!c) return '';
@@ -291,15 +332,26 @@ export const ClientSearchScreen: React.FC<Props> = ({ onBackToOs }) => {
                     <Text style={styles.vencimentotext}>Vencimento: Dia {c.vencimento}</Text>
                   ) : null}
 
-                  {/* BOTÃO DE ABRIR CONTRATO E ONU */}
-                  <TouchableOpacity
-                    style={styles.openContractBtn}
-                    onPress={() => handleOpenContractDetails(c, item)}
-                    activeOpacity={0.8}
-                  >
-                    <Feather name="info" size={14} color="#0F172A" />
-                    <Text style={styles.openContractBtnText}>Ver Detalhes & ONU</Text>
-                  </TouchableOpacity>
+                  {/* BOTÕES DE AÇÃO DO CONTRATO: DETALHES & FINANCEIRO */}
+                  <View style={{ flexDirection: 'row', marginTop: 10 }}>
+                    <TouchableOpacity
+                      style={[styles.openContractBtn, { flex: 1, marginRight: 4, marginTop: 0 }]}
+                      onPress={() => handleOpenContractDetails(c, item)}
+                      activeOpacity={0.8}
+                    >
+                      <Feather name="info" size={13} color="#0F172A" style={{ marginRight: 4 }} />
+                      <Text style={styles.openContractBtnText}>Detalhes & ONU</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.financeBtn, { flex: 1, marginLeft: 4 }]}
+                      onPress={() => handleOpenFinanceModal(c, item)}
+                      activeOpacity={0.8}
+                    >
+                      <Feather name="dollar-sign" size={13} color="#10B981" style={{ marginRight: 4 }} />
+                      <Text style={styles.financeBtnText}>Financeiro</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
               );
             })}
@@ -625,6 +677,220 @@ export const ClientSearchScreen: React.FC<Props> = ({ onBackToOs }) => {
                 )}
               </View>
             </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* MODAL FINANCEIRO E FATURAS */}
+      <Modal
+        visible={isFinanceModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setIsFinanceModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            {/* MODAL HEADER */}
+            <View style={styles.modalHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.modalTitle}>
+                  Financeiro • Contrato #{selectedFinanceContract?.contrato.id}
+                </Text>
+
+                <Text style={styles.modalSubTitle} numberOfLines={1}>
+                  {selectedFinanceContract?.cliente.nome}
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                onPress={() => setIsFinanceModalVisible(false)}
+                style={styles.closeModalBtn}
+                activeOpacity={0.7}
+              >
+                <Feather name="x" size={20} color="#94A3B8" />
+              </TouchableOpacity>
+            </View>
+
+            {/* MODAL BODY */}
+            {isLoadingFaturas ? (
+              <View style={{ paddingVertical: 40, alignItems: 'center' }}>
+                <ActivityIndicator size="large" color="#10B981" />
+                <Text style={{ color: '#94A3B8', marginTop: 12, fontSize: 13 }}>
+                  Carregando faturas no SGP...
+                </Text>
+              </View>
+            ) : (
+              <ScrollView style={{ padding: 16 }} showsVerticalScrollIndicator={false}>
+                <Text style={styles.financeSectionTitle}>
+                  3 Próximas Faturas (Incluindo Vencidas):
+                </Text>
+
+                {faturas && faturas.length > 0 ? (
+                  faturas.map((fatura) => {
+                    const isExpanded = expandedPixFaturaId === fatura.id;
+
+                    // Formata a data de vencimento (AAAA-MM-DD -> DD/MM/AAAA)
+                    let vencimentoStr = fatura.vencimento || '';
+                    if (vencimentoStr.includes('-')) {
+                      const parts = vencimentoStr.split('-');
+                      if (parts.length === 3) {
+                        vencimentoStr = `${parts[2]}/${parts[1]}/${parts[0]}`;
+                      }
+                    }
+
+                    // Verifica se está vencida
+                    let isVencida = false;
+                    if (fatura.vencimento) {
+                      const todayStr = new Date().toISOString().split('T')[0];
+                      isVencida = fatura.vencimento < todayStr && fatura.statusid !== 2;
+                    }
+
+                    const valorFinal = fatura.valorcorrigido || fatura.valor || 0;
+
+                    return (
+                      <View
+                        key={fatura.id}
+                        style={[
+                          styles.faturaCard,
+                          isVencida && { borderColor: '#EF4444', borderWidth: 1.5, backgroundColor: 'rgba(239, 68, 68, 0.06)' },
+                        ]}
+                      >
+                        {/* FATURA CARD HEADER */}
+                        <View style={styles.faturaHeaderRow}>
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.faturaIdText}>
+                              Fatura #{fatura.numero_documento || fatura.id}
+                            </Text>
+
+                            <Text style={styles.faturaValorText}>
+                              R$ {valorFinal.toFixed(2).replace('.', ',')}
+                            </Text>
+                          </View>
+
+                          <View
+                            style={[
+                              styles.faturaStatusBadge,
+                              { backgroundColor: isVencida ? 'rgba(239, 68, 68, 0.2)' : 'rgba(56, 189, 248, 0.15)' },
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.faturaStatusText,
+                                { color: isVencida ? '#EF4444' : '#38BDF8' },
+                              ]}
+                            >
+                              {isVencida ? '⚠️ VENCIDA' : fatura.status || 'Em Aberto'}
+                            </Text>
+                          </View>
+                        </View>
+
+                        {/* VENCIMENTO */}
+                        <View style={styles.faturaInfoRow}>
+                          <Feather name="calendar" size={12} color={isVencida ? '#EF4444' : '#94A3B8'} style={{ marginRight: 4 }} />
+                          <Text style={[styles.faturaInfoText, isVencida && { color: '#EF4444', fontWeight: 'bold' }]}>
+                            Vencimento: {vencimentoStr}
+                          </Text>
+                        </View>
+
+                        {/* BOTÃO GERAR QR CODE PIX / ALTERNAR VISUALIZAÇÃO */}
+                        {fatura.codigopix ? (
+                          <TouchableOpacity
+                            style={[styles.pixToggleBtn, isExpanded && styles.pixToggleBtnActive]}
+                            onPress={() => setExpandedPixFaturaId(isExpanded ? null : fatura.id)}
+                            activeOpacity={0.8}
+                          >
+                            <Feather name="grid" size={15} color={isExpanded ? '#0D1117' : '#10B981'} style={{ marginRight: 6 }} />
+                            <Text style={[styles.pixToggleBtnText, isExpanded && styles.pixToggleBtnTextActive]}>
+                              {isExpanded ? 'Ocultar QR Code PIX' : 'Gerar QR Code PIX / Copia e Cola'}
+                            </Text>
+                            <Feather name={isExpanded ? 'chevron-up' : 'chevron-down'} size={16} color={isExpanded ? '#0D1117' : '#10B981'} style={{ marginLeft: 4 }} />
+                          </TouchableOpacity>
+                        ) : (
+                          <Text style={{ color: '#94A3B8', fontSize: 11, fontStyle: 'italic', marginTop: 8 }}>
+                            QR Code PIX indisponível para esta fatura.
+                          </Text>
+                        )}
+
+                        {/* SEÇÃO EXPANDIDA DO PIX QR CODE */}
+                        {isExpanded && fatura.codigopix ? (
+                          <View style={styles.pixExpandedBox}>
+                            <Text style={styles.pixTitle}>Escaneie o QR Code abaixo para pagar via PIX:</Text>
+
+                            {/* QR CODE IMAGE VIA API */}
+                            <View style={styles.qrCodeImageContainer}>
+                              <Image
+                                source={{
+                                  uri: `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(fatura.codigopix)}`,
+                                }}
+                                style={{ width: 180, height: 180 }}
+                                resizeMode="contain"
+                              />
+                            </View>
+
+                            {/* PIX COPIA E COLA */}
+                            <Text style={styles.pixSubTitle}>Ou copie a chave PIX (Copia e Cola):</Text>
+                            <View style={styles.pixPayloadBox}>
+                              <Text style={styles.pixPayloadText} numberOfLines={3}>
+                                {fatura.codigopix}
+                              </Text>
+                            </View>
+
+                            {/* BOTÃO COPIAR CHAVE PIX */}
+                            <TouchableOpacity
+                              style={styles.copyPixBtn}
+                              onPress={() => {
+                                Clipboard.setStringAsync(fatura.codigopix!);
+                                Alert.alert('PIX Copiado!', 'O código PIX Copia e Cola foi copiado para a área de transferência.');
+                              }}
+                              activeOpacity={0.8}
+                            >
+                              <Feather name="copy" size={14} color="#0D1117" style={{ marginRight: 6 }} />
+                              <Text style={styles.copyPixBtnText}>Copiar Código PIX (Copia e Cola)</Text>
+                            </TouchableOpacity>
+
+                            {/* LINHA DIGITÁVEL E BOLETO PDF */}
+                            {fatura.linhadigitavel ? (
+                              <TouchableOpacity
+                                style={styles.copyBoletoBtn}
+                                onPress={() => {
+                                  Clipboard.setStringAsync(fatura.linhadigitavel!);
+                                  Alert.alert('Linha Digitável Copiada!', 'A linha digitável do boleto foi copiada.');
+                                }}
+                                activeOpacity={0.8}
+                              >
+                                <Feather name="file-text" size={14} color="#38BDF8" style={{ marginRight: 6 }} />
+                                <Text style={styles.copyBoletoBtnText}>Copiar Linha Digitável</Text>
+                              </TouchableOpacity>
+                            ) : null}
+
+                            {fatura.link_completo ? (
+                              <TouchableOpacity
+                                style={styles.pdfBoletoBtn}
+                                onPress={() => Linking.openURL(fatura.link_completo!)}
+                                activeOpacity={0.8}
+                              >
+                                <Feather name="external-link" size={14} color="#F8FAFC" style={{ marginRight: 6 }} />
+                                <Text style={styles.pdfBoletoBtnText}>Abrir Boleto em PDF</Text>
+                              </TouchableOpacity>
+                            ) : null}
+                          </View>
+                        ) : null}
+                      </View>
+                    );
+                  })
+                ) : (
+                  <View style={{ alignItems: 'center', paddingVertical: 30 }}>
+                    <Feather name="check-circle" size={32} color="#10B981" />
+                    <Text style={{ color: '#F8FAFC', fontWeight: 'bold', marginTop: 10, fontSize: 14 }}>
+                      Nenhuma fatura em aberto!
+                    </Text>
+                    <Text style={{ color: '#94A3B8', fontSize: 12, marginTop: 4, textAlign: 'center' }}>
+                      Este contrato não possui débitos pendentes no momento.
+                    </Text>
+                  </View>
+                )}
+              </ScrollView>
+            )}
           </View>
         </View>
       </Modal>
@@ -1078,5 +1344,184 @@ const styles = StyleSheet.create({
     fontSize: 12,
     textAlign: 'center',
     paddingVertical: 8,
+  },
+
+  financeBtn: {
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.4)',
+  },
+  financeBtnText: {
+    color: '#10B981',
+    fontWeight: 'bold',
+    fontSize: 13,
+  },
+  financeSectionTitle: {
+    color: '#F8FAFC',
+    fontSize: 14,
+    fontWeight: 'bold',
+    marginBottom: 12,
+  },
+  faturaCard: {
+    backgroundColor: '#161F30',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#1E293B',
+  },
+  faturaHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  faturaIdText: {
+    color: '#F8FAFC',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  faturaValorText: {
+    color: '#10B981',
+    fontSize: 16,
+    fontWeight: '800',
+    marginTop: 2,
+  },
+  faturaStatusBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  faturaStatusText: {
+    fontSize: 11,
+    fontWeight: 'bold',
+  },
+  faturaInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  faturaInfoText: {
+    color: '#CBD5E1',
+    fontSize: 12,
+  },
+  pixToggleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.4)',
+    paddingVertical: 10,
+    borderRadius: 8,
+    marginTop: 12,
+  },
+  pixToggleBtnActive: {
+    backgroundColor: '#10B981',
+    borderColor: '#10B981',
+  },
+  pixToggleBtnText: {
+    color: '#10B981',
+    fontWeight: 'bold',
+    fontSize: 12,
+  },
+  pixToggleBtnTextActive: {
+    color: '#0D1117',
+    fontWeight: 'bold',
+  },
+  pixExpandedBox: {
+    backgroundColor: '#0B0F17',
+    borderRadius: 10,
+    padding: 14,
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: '#1E293B',
+    alignItems: 'center',
+  },
+  pixTitle: {
+    color: '#F8FAFC',
+    fontSize: 12,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginBottom: 10,
+  },
+  qrCodeImageContainer: {
+    backgroundColor: '#FFFFFF',
+    padding: 10,
+    borderRadius: 12,
+    marginBottom: 12,
+  },
+  pixSubTitle: {
+    color: '#94A3B8',
+    fontSize: 11,
+    alignSelf: 'flex-start',
+    marginBottom: 4,
+  },
+  pixPayloadBox: {
+    backgroundColor: '#161F30',
+    padding: 10,
+    borderRadius: 6,
+    width: '100%',
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#1E293B',
+  },
+  pixPayloadText: {
+    color: '#CBD5E1',
+    fontSize: 10,
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+  },
+  copyPixBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#10B981',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    width: '100%',
+    marginBottom: 8,
+  },
+  copyPixBtnText: {
+    color: '#0D1117',
+    fontWeight: 'bold',
+    fontSize: 13,
+  },
+  copyBoletoBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(56, 189, 248, 0.12)',
+    borderColor: 'rgba(56, 189, 248, 0.4)',
+    borderWidth: 1,
+    paddingVertical: 9,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+    width: '100%',
+    marginBottom: 6,
+  },
+  copyBoletoBtnText: {
+    color: '#38BDF8',
+    fontWeight: 'bold',
+    fontSize: 12,
+  },
+  pdfBoletoBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#1E293B',
+    paddingVertical: 9,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+    width: '100%',
+  },
+  pdfBoletoBtnText: {
+    color: '#F8FAFC',
+    fontWeight: 'bold',
+    fontSize: 12,
   },
 });
