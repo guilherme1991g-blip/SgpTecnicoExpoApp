@@ -6,11 +6,12 @@ export const WEBHOOK_URL = 'https://n8n.zentos.com.br/webhook-test/recebeconclui
 
 export interface AttendanceWebhookPayload {
   status: 'iniciado' | 'concluido' | 'em_atendimento' | 'encerrado';
+  protocolo: string;
   data_evento: string;
   dados_ocorrencia: {
     os_id: number | string;
     oc_id?: number | string;
-    protocolo?: string;
+    protocolo: string;
     assunto?: string;
     descricao?: string;
     servico_prestado?: string;
@@ -70,13 +71,16 @@ export const sendAttendanceWebhook = async (
       .filter(Boolean)
       .join(', ');
 
+    const protocoloStr = chamado?.oc_protocolo || '';
+
     const payload: AttendanceWebhookPayload = {
       status,
+      protocolo: protocoloStr,
       data_evento: new Date().toISOString(),
       dados_ocorrencia: {
         os_id: osId,
         oc_id: chamado?.oc_id || osId,
-        protocolo: chamado?.oc_protocolo || '',
+        protocolo: protocoloStr,
         assunto: chamado?.oc_tipo_descricao || '',
         descricao: chamado?.os_conteudo || chamado?.oc_conteudo || '',
         servico_prestado: extra?.servicoPrestado || '',
