@@ -11,10 +11,12 @@ import { ClientSearchScreen } from './src/screens/ClientSearchScreen';
 import { OfflineClientsScreen } from './src/screens/OfflineClientsScreen';
 import { AuthorizeOnuScreen } from './src/screens/AuthorizeOnuScreen';
 import { OltConsultationScreen } from './src/screens/OltConsultationScreen';
+import { FacialLoginScreen } from './src/screens/FacialLoginScreen';
 import { ChamadoItem } from './src/types/sgp';
 
 export type RootStackParamList = {
   Login: undefined;
+  FacialLogin: undefined;
   OsList: undefined;
   OsDetail: { chamado: ChamadoItem };
   OsClose: { osId: number; chamado?: ChamadoItem };
@@ -77,7 +79,7 @@ export default function App() {
         <StatusBar barStyle="light-content" backgroundColor="#0B0F17" translucent={true} />
         <NavigationContainer>
           <Stack.Navigator
-            initialRouteName="OsList"
+            initialRouteName="FacialLogin"
             screenOptions={{
               headerShown: false,
               animation: 'slide_from_right',
@@ -86,6 +88,14 @@ export default function App() {
               contentStyle: { backgroundColor: '#0B0F17' },
             }}
           >
+            <Stack.Screen name="FacialLogin">
+              {({ navigation }) => (
+                <FacialLoginScreen
+                  onLoginSuccess={() => navigation.replace('OsList')}
+                />
+              )}
+            </Stack.Screen>
+
             <Stack.Screen name="Login">
               {({ navigation }) => (
                 <LoginScreen onLoginSuccess={() => navigation.replace('OsList')} />
@@ -100,7 +110,7 @@ export default function App() {
                   onOpenOfflineClients={() => navigation.navigate('OfflineClients')}
                   onOpenAuthorizeOnu={() => navigation.navigate('AuthorizeOnu')}
                   onOpenOltConsultation={() => navigation.navigate('OltConsultation')}
-                  onLogout={() => navigation.replace('Login')}
+                  onLogout={() => navigation.replace('FacialLogin')}
                 />
               )}
             </Stack.Screen>

@@ -1,12 +1,16 @@
 import * as Device from 'expo-device';
 import { Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ChamadoItem } from './sgpApi';
 
 export const WEBHOOK_URL = 'https://n8n.zentos.com.br/webhook/recebeconcluido';
+export const FACIAL_WEBHOOK_URL = 'https://n8n.zentos.com.br/webhook/reconhecimentofacial';
+export const LOGGED_TECNICO_KEY = '@logged_tecnico_name';
 
 export interface AttendanceWebhookPayload {
   status: 'iniciado' | 'concluido' | 'em_atendimento' | 'encerrado';
   protocolo: string;
+  tecnico?: string;
   data_evento: string;
   dados_ocorrencia: {
     os_id: number | string;
@@ -18,6 +22,7 @@ export interface AttendanceWebhookPayload {
     observacao?: string;
     data_agendamento?: string;
     data_cadastro?: string;
+    tecnico?: string;
   };
   dados_contrato: {
     cliente_id?: number | string;
@@ -45,9 +50,135 @@ export interface AttendanceWebhookPayload {
   };
 }
 
+export interface FacialVerificationResult {
+  sucesso: boolean;
+  liberado: boolean;
+  tecnico?: string;
+  nome?: string;
+  mensagem?: string;
+}
+
+/**
+ * Obtém o nome do técnico salvo na sessão local do aplicativo
+ */
+export const getLoggedTecnicoName = async (): Promise<string | null> => {
+  try {
+    return await AsyncStorage.getItem(LOGGED_TECNICO_KEY);
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Salva o nome do técnico na sessão local do aplicativo
+ */
+export const setLoggedTecnicoName = async (name: string): Promise<void> => {
+  try {
+    await AsyncStorage.setItem(LOGGED_TECNICO_KEY, name);
+  } catch {}
+};
+
+/**
+ * Encerra a sessão do técnico
+ */
+export const logoutLoggedTecnico = async (): Promise<void> => {
+  try {
+    await AsyncStorage.removeItem(LOGGED_TECNICO_KEY);
+  } catch {}
+};
+
+/**
+ * Envia selfie capturada ao vivo (base64) para o webhook de reconhecimento facial n8n:
+ * POST https://n8n.zentos.com.br/webhook/reconhecimentofacial
+ */
+export const verifyFacialRecognitionSgp = async (
+  base64Image: string
+): Promise<FacialVerificationResult> => {
+  try {
+    const formattedBase64 = base64Image.startsWith('data:')
+      ? base64Image
+      : `data:image/jpeg;base64,${base64Image}`;
+
+    const payload = {
+      foto_base64: formattedBase64,
+      timestamp: new Date().toISOString(),
+      dispositivo: `${Device.brand || ''} ${Device.modelName || 'Celular Técnico'}`.trim(),
+    };
+
+    console.log(`[Facial Webhook] Enviando selfie para ${FACIAL_WEBHOOK_URL}...`);
+
+    const response = await fetch(FACIAL_WEBHOOK_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const resText = await response.text();
+    console.log(`[Facial Webhook] Resposta (${response.status}):`, resText);
+
+    let data: any = {};
+    try {
+      data = JSON.parse(resText);
+    } catch {
+      data = {};
+    }
+
+    // Extrai o nome do técnico devolvido na resposta do webhook
+    const tecnicoNome =
+      data?.tecnico ||
+      data?.nome ||
+      data?.dados?.tecnico ||
+      data?.dados?.nome ||
+      (Array.isArray(data) && (data[0]?.tecnico || data[0]?.nome));
+
+    const isApproved =
+      data?.liberado === true ||
+      data?.sucesso === true ||
+      data?.status === 'aprovado' ||
+      data?.status === 'sucesso' ||
+      Boolean(tecnicoNome);
+
+    if (isApproved && tecnicoNome) {
+      await setLoggedTecnicoName(tecnicoNome);
+      return {
+        sucesso: true,
+        liberado: true,
+        tecnico: tecnicoNome,
+        nome: tecnicoNome,
+        mensagem: `Identidade confirmada! Bem-vindo, ${tecnicoNome}.`,
+      };
+    }
+
+    if (response.ok && tecnicoNome) {
+      await setLoggedTecnicoName(tecnicoNome);
+      return {
+        sucesso: true,
+        liberado: true,
+        tecnico: tecnicoNome,
+        nome: tecnicoNome,
+      };
+    }
+
+    return {
+      sucesso: false,
+      liberado: false,
+      mensagem: data?.mensagem || data?.erro || 'Reconhecimento facial não autorizado.',
+    };
+  } catch (error) {
+    console.warn('[Facial Webhook] Erro:', error);
+    return {
+      sucesso: false,
+      liberado: false,
+      mensagem: 'Erro de comunicação com o serviço de reconhecimento facial.',
+    };
+  }
+};
+
 /**
  * Envia webhook para https://n8n.zentos.com.br/webhook/recebeconcluido
- * ao iniciar ou concluir um atendimento.
+ * ao iniciar ou concluir um atendimento, incluindo o nome do técnico logado.
  */
 export const sendAttendanceWebhook = async (
   status: 'iniciado' | 'concluido',
@@ -62,6 +193,8 @@ export const sendAttendanceWebhook = async (
   try {
     const osId = chamado?.os_id || extra?.osId || 0;
     const servico = chamado?.servicos?.[0];
+    const loggedTecnicoName = await getLoggedTecnicoName();
+    const nomeTecnicoFinal = loggedTecnicoName || chamado?.os_tecnico_responsavel || 'Técnico de Campo';
 
     const fullAddress = [
       chamado?.endereco_logradouro ? `${chamado.endereco_logradouro}, ${chamado.endereco_numero || 'SN'}` : '',
@@ -76,6 +209,7 @@ export const sendAttendanceWebhook = async (
     const payload: AttendanceWebhookPayload = {
       status,
       protocolo: protocoloStr,
+      tecnico: nomeTecnicoFinal,
       data_evento: new Date().toISOString(),
       dados_ocorrencia: {
         os_id: osId,
@@ -87,6 +221,7 @@ export const sendAttendanceWebhook = async (
         observacao: extra?.observacao || chamado?.os_observacao || '',
         data_agendamento: chamado?.os_data_agendamento || '',
         data_cadastro: chamado?.oc_data_cadastro || chamado?.os_data_cadastro || '',
+        tecnico: nomeTecnicoFinal,
       },
       dados_contrato: {
         cliente_id: chamado?.cliente_id,
@@ -114,7 +249,7 @@ export const sendAttendanceWebhook = async (
       },
     };
 
-    console.log(`[Webhook] Enviando notificação '${status}' da O.S. #${osId} para ${WEBHOOK_URL}...`);
+    console.log(`[Webhook] Enviando notificação '${status}' (Técnico: ${nomeTecnicoFinal}) da O.S. #${osId} para ${WEBHOOK_URL}...`);
 
     const response = await fetch(WEBHOOK_URL, {
       method: 'POST',
