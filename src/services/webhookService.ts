@@ -2,7 +2,7 @@ import * as Device from 'expo-device';
 import { Platform } from 'react-native';
 import { ChamadoItem } from './sgpApi';
 
-export const WEBHOOK_URL = 'https://n8n.zentos.com.br/webhook-test/recebeconcluido';
+export const WEBHOOK_URL = 'https://n8n.zentos.com.br/webhook/recebeconcluido';
 
 export interface AttendanceWebhookPayload {
   status: 'iniciado' | 'concluido' | 'em_atendimento' | 'encerrado';
