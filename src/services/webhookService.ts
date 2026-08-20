@@ -4,7 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ChamadoItem } from './sgpApi';
 
 export const WEBHOOK_URL = 'https://n8n.zentos.com.br/webhook/recebeconcluido';
-export const FACIAL_WEBHOOK_URL = 'https://n8n.zentos.com.br/webhook/reconhecimentofacial';
+export const FACIAL_WEBHOOK_URL = 'https://n8n.zentos.com.br/webhook/reconhecimentofacil';
 export const LOGGED_TECNICO_KEY = '@logged_tecnico_name';
 
 export interface AttendanceWebhookPayload {
@@ -95,12 +95,15 @@ export const verifyFacialRecognitionSgp = async (
   base64Image: string
 ): Promise<FacialVerificationResult> => {
   try {
-    const formattedBase64 = base64Image.startsWith('data:')
-      ? base64Image
-      : `data:image/jpeg;base64,${base64Image}`;
+    const rawBase64 = base64Image.replace(/^data:image\/[a-z]+;base64,/, '');
+    const formattedBase64 = `data:image/jpeg;base64,${rawBase64}`;
 
     const payload = {
       foto_base64: formattedBase64,
+      raw_base64: rawBase64,
+      base64: rawBase64,
+      foto: formattedBase64,
+      image: formattedBase64,
       timestamp: new Date().toISOString(),
       dispositivo: `${Device.brand || ''} ${Device.modelName || 'Celular Técnico'}`.trim(),
     };
