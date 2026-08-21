@@ -1,4 +1,5 @@
 import * as Device from 'expo-device';
+import * as Application from 'expo-application';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ChamadoItem } from './sgpApi';
@@ -7,10 +8,35 @@ export const WEBHOOK_URL = 'https://n8n.zentos.com.br/webhook/recebeconcluido';
 export const FACIAL_WEBHOOK_URL = 'https://n8n.zentos.com.br/webhook/reconhecimentofacil';
 export const LOGGED_TECNICO_KEY = '@logged_tecnico_name';
 
+/**
+ * Obtém a identificação ÚNICA E REAL DO HARDWARE DO CELULAR (Android ID ou iOS IDFV)
+ * Fornecida diretamente pelo Sistema Operacional do aparelho.
+ */
+export const getRealHardwareDeviceId = async (): Promise<string> => {
+  try {
+    if (Platform.OS === 'android') {
+      const androidHardwareId = Application.getAndroidId();
+      if (androidHardwareId && androidHardwareId.trim().length > 0) {
+        return androidHardwareId.trim();
+      }
+    } else if (Platform.OS === 'ios') {
+      const iosVendorId = await Application.getIosIdForVendorAsync();
+      if (iosVendorId && iosVendorId.trim().length > 0) {
+        return iosVendorId.trim();
+      }
+    }
+  } catch (err) {
+    console.warn('Erro ao ler Hardware ID nativo:', err);
+  }
+
+  return `${Device.brand || ''}_${Device.modelName || 'Device'}`.trim();
+};
+
 export interface AttendanceWebhookPayload {
   status: 'iniciado' | 'concluido' | 'em_atendimento' | 'encerrado';
   protocolo: string;
   tecnico?: string;
+  dispositivo_id?: string;
   data_evento: string;
   dados_ocorrencia: {
     os_id: number | string;
@@ -40,13 +66,14 @@ export interface AttendanceWebhookPayload {
     coordenadas?: string;
   };
   dados_celular: {
+    dispositivo_id?: string;
     dispositivo?: string | null;
     marca?: string | null;
     modelo?: string | null;
-    sistema_operacional?: string;
+    sistema_operacional?: string | null;
     versao_so?: string | null;
-    plataforma?: string;
-    is_device?: boolean;
+    plataforma?: string | null;
+    is_device?: boolean | null;
   };
 }
 
@@ -56,6 +83,12 @@ export interface FacialVerificationResult {
   tecnico?: string;
   nome?: string;
   mensagem?: string;
+  debugInfo?: {
+    statusHttp?: number;
+    respostaServidor?: string;
+    urlTestada?: string;
+    erroDetalhado?: string;
+  };
 }
 
 /**
@@ -87,39 +120,113 @@ export const logoutLoggedTecnico = async (): Promise<void> => {
   } catch {}
 };
 
+export const DEVICE_ID_KEY = '@unique_device_id_v1';
+
 /**
- * Envia selfie capturada ao vivo (base64) para o webhook de reconhecimento facial n8n:
- * POST https://n8n.zentos.com.br/webhook/reconhecimentofacial
+ * Gera ou recupera um identificador único persistente para cada dispositivo (UUID)
  */
-export const verifyFacialRecognitionSgp = async (
-  base64Image: string
-): Promise<FacialVerificationResult> => {
+export const getOrCreateDeviceId = async (): Promise<string> => {
   try {
-    const rawBase64 = base64Image.replace(/^data:image\/[a-z]+;base64,/, '');
-    const formattedBase64 = `data:image/jpeg;base64,${rawBase64}`;
+    let existingId = await AsyncStorage.getItem(DEVICE_ID_KEY);
+    if (existingId) {
+      return existingId;
+    }
+    const newId = `DEV-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+    await AsyncStorage.setItem(DEVICE_ID_KEY, newId);
+    return newId;
+  } catch {
+    return `DEV-${Date.now().toString(36).toUpperCase()}`;
+  }
+};
+
+/**
+ * Envia código numérico (PIN do técnico) e dados do dispositivo para o webhook n8n:
+ * POST https://n8n.zentos.com.br/webhook/reconhecimentofacil
+ */
+export const verifyNumericCodeSgp = async (
+  numericCode: string,
+  base64Image?: string
+): Promise<FacialVerificationResult> => {
+  let targetUrl = FACIAL_WEBHOOK_URL;
+  let statusHttp = 0;
+  let resText = '';
+
+  try {
+    const deviceId = await getRealHardwareDeviceId();
+    const rawBase64 = base64Image ? base64Image.replace(/^data:image\/[a-z]+;base64,/, '') : '';
+    const formattedBase64 = rawBase64 ? `data:image/jpeg;base64,${rawBase64}` : '';
 
     const payload = {
+      codigo: numericCode.trim(),
+      codigo_tecnico: numericCode.trim(),
+      pin: numericCode.trim(),
       foto_base64: formattedBase64,
-      raw_base64: rawBase64,
-      base64: rawBase64,
-      foto: formattedBase64,
-      image: formattedBase64,
       timestamp: new Date().toISOString(),
+      dispositivo_id: deviceId,
+      android_id: deviceId,
       dispositivo: `${Device.brand || ''} ${Device.modelName || 'Celular Técnico'}`.trim(),
+      dispositivo_marca: Device.brand || '',
+      dispositivo_modelo: Device.modelName || '',
+      dispositivo_so: `${Platform.OS} ${Device.osVersion || ''}`.trim(),
     };
 
-    console.log(`[Facial Webhook] Enviando selfie para ${FACIAL_WEBHOOK_URL}...`);
+    console.log(`[Numeric Login Webhook] Enviando código '${numericCode}' para ${FACIAL_WEBHOOK_URL}...`);
 
-    const response = await fetch(FACIAL_WEBHOOK_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-    });
+    let response: Response;
+    try {
+      response = await fetch(FACIAL_WEBHOOK_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
 
-    const resText = await response.text();
-    console.log(`[Facial Webhook] Resposta (${response.status}):`, resText);
+      targetUrl = FACIAL_WEBHOOK_URL;
+      statusHttp = response.status;
+
+      // Se der 404 na rota de producao, tenta automaticamente a rota de TESTE do n8n
+      if (response.status === 404) {
+        const testUrl = 'https://n8n.zentos.com.br/webhook-test/reconhecimentofacil';
+        targetUrl = testUrl;
+        console.log(`[Numeric Login Webhook] 404 na produção. Tentando rota de teste do n8n: ${testUrl}...`);
+        response = await fetch(testUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+        });
+        statusHttp = response.status;
+      }
+    } catch (fetchErr: any) {
+      const testUrl = 'https://n8n.zentos.com.br/webhook-test/reconhecimentofacil';
+      targetUrl = testUrl;
+      console.log(`[Numeric Login Webhook] Falha de conexão na produção. Tentando rota de teste: ${testUrl}...`);
+      try {
+        response = await fetch(testUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+        });
+        statusHttp = response.status;
+      } catch (err2: any) {
+        return {
+          sucesso: false,
+          liberado: false,
+          mensagem: 'Falha de rede/conexão com o servidor do n8n.',
+          debugInfo: {
+            urlTestada: testUrl,
+            erroDetalhado: err2?.message || String(err2),
+          },
+        };
+      }
+    }
+
+    resText = await response.text();
+    console.log(`[Numeric Login Webhook] Resposta (${statusHttp}):`, resText);
 
     let data: any = {};
     try {
@@ -151,6 +258,11 @@ export const verifyFacialRecognitionSgp = async (
         tecnico: tecnicoNome,
         nome: tecnicoNome,
         mensagem: `Identidade confirmada! Bem-vindo, ${tecnicoNome}.`,
+        debugInfo: {
+          statusHttp,
+          respostaServidor: resText,
+          urlTestada: targetUrl,
+        },
       };
     }
 
@@ -161,22 +273,40 @@ export const verifyFacialRecognitionSgp = async (
         liberado: true,
         tecnico: tecnicoNome,
         nome: tecnicoNome,
+        debugInfo: {
+          statusHttp,
+          respostaServidor: resText,
+          urlTestada: targetUrl,
+        },
       };
     }
 
     return {
       sucesso: false,
       liberado: false,
-      mensagem: data?.mensagem || data?.erro || 'Reconhecimento facial não autorizado.',
+      mensagem: data?.mensagem || data?.erro || `Status ${statusHttp}: Código incorreto ou não liberado.`,
+      debugInfo: {
+        statusHttp,
+        respostaServidor: resText,
+        urlTestada: targetUrl,
+      },
     };
-  } catch (error) {
-    console.warn('[Facial Webhook] Erro:', error);
+  } catch (error: any) {
+    console.warn('[Numeric Login Webhook] Erro:', error);
     return {
       sucesso: false,
       liberado: false,
-      mensagem: 'Erro de comunicação com o serviço de reconhecimento facial.',
+      mensagem: 'Erro de exceção na requisição.',
+      debugInfo: {
+        urlTestada: targetUrl,
+        erroDetalhado: error?.message || String(error),
+      },
     };
   }
+};
+
+export const verifyFacialRecognitionSgp = async (input: string): Promise<FacialVerificationResult> => {
+  return verifyNumericCodeSgp(input);
 };
 
 /**
@@ -209,10 +339,13 @@ export const sendAttendanceWebhook = async (
 
     const protocoloStr = chamado?.oc_protocolo || '';
 
+    const deviceId = await getRealHardwareDeviceId();
+
     const payload: AttendanceWebhookPayload = {
       status,
       protocolo: protocoloStr,
       tecnico: nomeTecnicoFinal,
+      dispositivo_id: deviceId,
       data_evento: new Date().toISOString(),
       dados_ocorrencia: {
         os_id: osId,
@@ -242,6 +375,7 @@ export const sendAttendanceWebhook = async (
         coordenadas: extra?.coordsFormatted || chamado?.contrato_endereco_ll || '',
       },
       dados_celular: {
+        dispositivo_id: deviceId,
         dispositivo: Device.deviceName || 'Celular Técnico SGP',
         marca: Device.brand || 'Android/iOS',
         modelo: Device.modelName || 'Mobile Device',
@@ -254,13 +388,38 @@ export const sendAttendanceWebhook = async (
 
     console.log(`[Webhook] Enviando notificação '${status}' (Técnico: ${nomeTecnicoFinal}) da O.S. #${osId} para ${WEBHOOK_URL}...`);
 
-    const response = await fetch(WEBHOOK_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-    });
+    let response: Response;
+    try {
+      response = await fetch(WEBHOOK_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (response.status === 404) {
+        const testUrl = 'https://n8n.zentos.com.br/webhook-test/recebeconcluido';
+        console.log(`[Webhook] 404 na produção. Tentando rota de teste do n8n: ${testUrl}...`);
+        response = await fetch(testUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+        });
+      }
+    } catch (e) {
+      const testUrl = 'https://n8n.zentos.com.br/webhook-test/recebeconcluido';
+      console.log(`[Webhook] Falha de conexão. Tentando rota de teste: ${testUrl}...`);
+      response = await fetch(testUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+    }
 
     console.log(`[Webhook] Resposta do servidor (${response.status}):`, await response.text());
     return response.ok;

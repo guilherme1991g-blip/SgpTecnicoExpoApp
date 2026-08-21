@@ -24,6 +24,7 @@ import {
   fetchOnuFttxInfo,
   fetchContractIpByLogin,
   fetchRealOnlineLoginsSet,
+  checkLoginsOnlineStatus,
   OnuFttxInfoResult,
   fetchOnuForContractSgp,
   fetchOnuDetailsSgp,
@@ -118,12 +119,28 @@ export const ClientSearchScreen: React.FC<Props> = ({ onBackToOs }) => {
     setHasSearched(true);
 
     try {
-      const [results, onlineSet] = await Promise.all([
-        searchClientesSgp(q),
+      const results = await searchClientesSgp(q);
+      
+      const extractedLogins: string[] = [];
+      results.forEach((cliente) => {
+        cliente.contratos?.forEach((contrato) => {
+          const login = getRealPppoeLogin(contrato);
+          if (login) extractedLogins.push(login);
+        });
+      });
+
+      const [specificOnlineSet, bulkOnlineSet]: [Set<string>, Set<string>] = await Promise.all([
+        checkLoginsOnlineStatus(extractedLogins),
         fetchRealOnlineLoginsSet(true),
       ]);
+
+      const mergedOnlineSet = new Set<string>([
+        ...Array.from(specificOnlineSet),
+        ...Array.from(bulkOnlineSet),
+      ]);
+
       setClientes(results);
-      setOnlineLoginsSet(onlineSet);
+      setOnlineLoginsSet(mergedOnlineSet);
       setIsLoading(false);
     } catch (err) {
       setIsLoading(false);
@@ -305,7 +322,11 @@ export const ClientSearchScreen: React.FC<Props> = ({ onBackToOs }) => {
             {item.contratos.map((c) => {
               const servico = c.servicos?.[0];
               const loginStr = getRealPppoeLogin(c) || 'Sem PPPoE';
-              const isOnlineReal = loginStr !== 'Sem PPPoE' ? onlineLoginsSet.has(loginStr.toLowerCase()) : false;
+              const servicoIp = (servico?.ip || '').trim();
+              const isOnlineReal =
+                loginStr !== 'Sem PPPoE'
+                  ? onlineLoginsSet.has(loginStr.toLowerCase()) || (servicoIp.length > 0 && servicoIp !== '0.0.0.0')
+                  : false;
 
               return (
                 <View key={c.id} style={styles.contractBadgeCard}>

@@ -2,20 +2,20 @@ import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
+  TextInput,
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
   SafeAreaView,
-  Image,
   Alert,
   Platform,
   StatusBar,
   ScrollView,
+  KeyboardAvoidingView,
 } from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
 import { Feather } from '@expo/vector-icons';
 import {
-  verifyFacialRecognitionSgp,
+  verifyNumericCodeSgp,
   getLoggedTecnicoName,
   logoutLoggedTecnico,
 } from '../services/webhookService';
@@ -25,8 +25,8 @@ interface Props {
   onSkip?: () => void;
 }
 
-export const FacialLoginScreen: React.FC<Props> = ({ onLoginSuccess, onSkip }) => {
-  const [capturedPhoto, setCapturedPhoto] = useState<{ uri: string; base64: string } | null>(null);
+export const FacialLoginScreen: React.FC<Props> = ({ onLoginSuccess }) => {
+  const [numericCode, setNumericCode] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [loggedTecnico, setLoggedTecnico] = useState<string | null>(null);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
@@ -42,184 +42,151 @@ export const FacialLoginScreen: React.FC<Props> = ({ onLoginSuccess, onSkip }) =
     }
   };
 
-  // CAPTURA SELFIE APENAS COM A CÂMERA FRONTAL (GALERIA PROIBIDA)
-  const handleTakeSelfieFrontCamera = async () => {
-    try {
-      const permission = await ImagePicker.requestCameraPermissionsAsync();
-      if (!permission.granted) {
-        Alert.alert(
-          'Permissão da Câmera',
-          'Permissão para usar a câmera é necessária para o reconhecimento facial.'
-        );
-        return;
-      }
-
-      setStatusMsg(null);
-
-      // Abre obrigatoriamente a Câmera Frontal (cameraType: ImagePicker.CameraType.front)
-      const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        cameraType: ImagePicker.CameraType.front,
-        allowsEditing: false,
-        quality: 0.7,
-        base64: true,
-      });
-
-      if (!result.canceled && result.assets && result.assets.length > 0) {
-        const asset = result.assets[0];
-        if (asset.base64) {
-          setCapturedPhoto({
-            uri: asset.uri,
-            base64: asset.base64,
-          });
-          // Processa a validação enviando o base64 para o webhook de reconhecimento facial
-          processFacialRecognition(asset.base64);
-        } else {
-          Alert.alert('Erro', 'Não foi possível obter a imagem da selfie em base64.');
-        }
-      }
-    } catch (err) {
-      console.warn('Erro ao abrir câmera frontal:', err);
-      Alert.alert('Erro', 'Ocorreu um erro ao abrir a câmera frontal.');
+  const handleValidateCode = async () => {
+    const code = numericCode.trim();
+    if (!code) {
+      Alert.alert('Atenção', 'Por favor, digite o seu código numérico de técnico.');
+      return;
     }
-  };
 
-  // PROCESSA A ENVIADA DO BASE64 PARA O WEBHOOK N8N
-  const processFacialRecognition = async (base64Img: string) => {
     setIsLoading(true);
-    setStatusMsg('Enviando selfie para validação facial no n8n...');
+    setStatusMsg('Validando código...');
 
     try {
-      const res = await verifyFacialRecognitionSgp(base64Img);
+      const res = await verifyNumericCodeSgp(code);
       setIsLoading(false);
 
       if (res.sucesso && (res.tecnico || res.nome)) {
-        const nomeTecnico = res.tecnico || res.nome || 'Técnico de Campo';
+        const nomeTecnico = res.tecnico || res.nome || `Técnico (${code})`;
         setLoggedTecnico(nomeTecnico);
-        setStatusMsg(`✅ Reconhecimento facial aprovado!`);
+        setStatusMsg('✅ Autenticado com Sucesso!');
 
         Alert.alert(
           'Acesso Liberado!',
-          `Reconhecimento facial confirmado.\nBem-vindo, ${nomeTecnico}!`,
+          `Código validado com sucesso.\nBem-vindo(a), ${nomeTecnico}!`,
           [
             {
-              text: 'Acessar Ordens de Serviço',
+              text: 'Entrar no Sistema',
               onPress: () => onLoginSuccess(nomeTecnico),
             },
           ]
         );
       } else {
-        setStatusMsg('❌ ' + (res.mensagem || 'Reconhecimento facial não reconhecido.'));
-        Alert.alert(
-          'Não Autorizado',
-          res.mensagem || 'O rosto capturado não corresponde a um técnico autorizado.',
-          [{ text: 'Tentar Novamente', onPress: () => setCapturedPhoto(null) }]
-        );
+        const msg = res.mensagem || 'Código numérico não autorizado.';
+        setStatusMsg('❌ ' + msg);
+        Alert.alert('Não Autorizado', msg, [{ text: 'Tentar Novamente' }]);
       }
-    } catch (e) {
+    } catch (e: any) {
       setIsLoading(false);
       setStatusMsg('❌ Erro na validação.');
-      Alert.alert('Erro', 'Falha ao conectar com o serviço de reconhecimento facial.');
+      Alert.alert('Erro de Conexão', 'Falha ao conectar com o serviço de autenticação.');
     }
   };
 
   const handleLogout = async () => {
     await logoutLoggedTecnico();
     setLoggedTecnico(null);
-    setCapturedPhoto(null);
+    setNumericCode('');
     setStatusMsg(null);
   };
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#0B0F17" />
+      <StatusBar barStyle="light-content" backgroundColor="#070A11" />
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {/* CABEÇALHO */}
-        <View style={styles.header}>
-          <View style={styles.badgeIconHeader}>
-            <Feather name="user-check" size={28} color="#38BDF8" />
-          </View>
-          <Text style={styles.title}>Reconhecimento Facial</Text>
-          <Text style={styles.subtitle}>
-            Para liberar o acesso, capture uma selfie ao vivo utilizando apenas a câmera frontal do aparelho.
-          </Text>
-        </View>
-
-        {/* CARTÃO DE TÉCNICO LOGADO */}
-        {loggedTecnico ? (
-          <View style={styles.verifiedCard}>
-            <View style={styles.verifiedHeaderRow}>
-              <View style={styles.verifiedDot} />
-              <Text style={styles.verifiedStatusText}>SESSÃO ATIVA</Text>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={{ flex: 1 }}
+      >
+        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+          {/* HEADER MODERNISMO FUTURISTA */}
+          <View style={styles.header}>
+            <View style={styles.glowBadge}>
+              <Feather name="key" size={28} color="#00F2FE" />
             </View>
-
-            <Text style={styles.loggedLabel}>Técnico Identificado:</Text>
-            <Text style={styles.loggedName}>{loggedTecnico}</Text>
-
-            <TouchableOpacity
-              style={styles.continueBtn}
-              onPress={() => onLoginSuccess(loggedTecnico)}
-              activeOpacity={0.8}
-            >
-              <Feather name="arrow-right" size={16} color="#0D1117" style={{ marginRight: 6 }} />
-              <Text style={styles.continueBtnText}>Entrar no App como {loggedTecnico}</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout} activeOpacity={0.8}>
-              <Feather name="refresh-cw" size={14} color="#EF4444" style={{ marginRight: 6 }} />
-              <Text style={styles.logoutBtnText}>Trocar Técnico / Refazer Selfie</Text>
-            </TouchableOpacity>
+            <Text style={styles.title}>AUTENTICAÇÃO DO TÉCNICO</Text>
+            <Text style={styles.subtitle}>
+              Digite seu código numérico para liberar o acesso ao sistema
+            </Text>
           </View>
-        ) : (
-          <View style={styles.cameraBoxContainer}>
-            {/* CONTAINER DA CÂMERA OU SELFIE CAPTURADA */}
-            <View style={styles.avatarFrame}>
-              {capturedPhoto ? (
-                <Image source={{ uri: capturedPhoto.uri }} style={styles.capturedImage} />
-              ) : (
-                <View style={styles.avatarPlaceholder}>
-                  <Feather name="camera" size={54} color="#38BDF8" />
-                  <Text style={styles.avatarPlaceholderText}>Câmera Frontal</Text>
-                </View>
-              )}
-            </View>
 
-            {/* SPINNER DE LOADING */}
-            {isLoading ? (
-              <View style={styles.loadingBox}>
-                <ActivityIndicator size="large" color="#38BDF8" />
-                <Text style={styles.loadingText}>Analisando Reconhecimento Facial no n8n...</Text>
+          {/* TÉCNICO AUTENTICADO */}
+          {loggedTecnico ? (
+            <View style={styles.successCard}>
+              <View style={styles.verifiedIconContainer}>
+                <Feather name="check-circle" size={48} color="#10B981" />
               </View>
-            ) : null}
 
-            {/* MENSAGEM DE STATUS */}
-            {statusMsg && !isLoading ? (
-              <Text style={styles.statusText}>{statusMsg}</Text>
-            ) : null}
+              <Text style={styles.successBadgeTitle}>SESSÃO AUTENTICADA</Text>
+              <Text style={styles.successNameText}>{loggedTecnico}</Text>
 
-            {/* BOTÃO PRINCIPAL: APENAS CÂMERA FRONTAL */}
-            <TouchableOpacity
-              style={styles.takeSelfieBtn}
-              onPress={handleTakeSelfieFrontCamera}
-              disabled={isLoading}
-              activeOpacity={0.8}
-            >
-              <Feather name="camera" size={18} color="#0D1117" style={{ marginRight: 8 }} />
-              <Text style={styles.takeSelfieBtnText}>
-                {capturedPhoto ? 'Tirar Outra Selfie (Câmera Frontal)' : 'Tirar Selfie com Câmera Frontal'}
-              </Text>
-            </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.primaryActionBtn}
+                onPress={() => onLoginSuccess(loggedTecnico)}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.primaryActionBtnText}>Acessar Sistema</Text>
+                <Feather name="arrow-right" size={18} color="#070A11" style={{ marginLeft: 8 }} />
+              </TouchableOpacity>
 
-            <View style={styles.ruleNoticeBox}>
-              <Feather name="alert-circle" size={14} color="#F59E0B" style={{ marginRight: 6 }} />
-              <Text style={styles.ruleNoticeText}>
-                Importante: Envio via galeria desativado. Apenas foto capturada ao vivo na câmera frontal é aceita.
-              </Text>
+              <TouchableOpacity style={styles.secondaryTextBtn} onPress={handleLogout} activeOpacity={0.7}>
+                <Feather name="rotate-ccw" size={13} color="#94A3B8" style={{ marginRight: 6 }} />
+                <Text style={styles.secondaryTextBtnText}>Trocar Usuário / Digitar Outro Código</Text>
+              </TouchableOpacity>
             </View>
-          </View>
-        )}
-      </ScrollView>
+          ) : (
+            <View style={styles.formContainer}>
+              {/* CAMPO DE ENTRADA NUMÉRICA */}
+              <View style={styles.inputCard}>
+                <Text style={styles.inputLabel}>DIGITE SEU CÓDIGO NUMÉRICO:</Text>
+                <View style={styles.numericInputWrapper}>
+                  <Feather name="hash" size={22} color="#00F2FE" style={{ marginRight: 10 }} />
+                  <TextInput
+                    style={styles.numericInput}
+                    value={numericCode}
+                    onChangeText={setNumericCode}
+                    placeholder="Ex: 123456"
+                    placeholderTextColor="#475569"
+                    keyboardType="number-pad"
+                    maxLength={10}
+                    autoFocus={true}
+                    editable={!isLoading}
+                  />
+                  {numericCode.length > 0 ? (
+                    <TouchableOpacity onPress={() => setNumericCode('')} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                      <Feather name="x-circle" size={18} color="#64748B" />
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+              </View>
+
+              {/* STATUS DE CARREGAMENTO / RESPOSTA */}
+              {isLoading ? (
+                <View style={styles.statusLoadingRow}>
+                  <ActivityIndicator size="small" color="#00F2FE" />
+                  <Text style={styles.statusLoadingText}>Validando código...</Text>
+                </View>
+              ) : statusMsg ? (
+                <Text style={styles.statusInfoText}>{statusMsg}</Text>
+              ) : null}
+
+              {/* BOTÃO SUBMIT */}
+              <TouchableOpacity
+                style={[
+                  styles.submitBtn,
+                  (!numericCode.trim() || isLoading) && { opacity: 0.5 },
+                ]}
+                onPress={handleValidateCode}
+                disabled={!numericCode.trim() || isLoading}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.submitBtnText}>ENTRAR NO SISTEMA</Text>
+                <Feather name="arrow-right" size={18} color="#070A11" style={{ marginLeft: 8 }} />
+              </TouchableOpacity>
+            </View>
+          )}
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 };
@@ -227,198 +194,172 @@ export const FacialLoginScreen: React.FC<Props> = ({ onLoginSuccess, onSkip }) =
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0B0F17',
+    backgroundColor: '#070A11',
     paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight || 0 : 0,
   },
   scrollContent: {
-    padding: 20,
+    paddingHorizontal: 24,
+    paddingVertical: 20,
     alignItems: 'center',
   },
   header: {
     alignItems: 'center',
     marginTop: 20,
-    marginBottom: 24,
+    marginBottom: 28,
   },
-  badgeIconHeader: {
+  glowBadge: {
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: 'rgba(56, 189, 248, 0.15)',
+    backgroundColor: 'rgba(0, 242, 254, 0.1)',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(56, 189, 248, 0.4)',
+    marginBottom: 14,
+    borderWidth: 1.5,
+    borderColor: 'rgba(0, 242, 254, 0.3)',
   },
   title: {
+    color: '#F8FAFC',
+    fontSize: 18,
+    fontWeight: '800',
+    letterSpacing: 1.5,
+    textAlign: 'center',
+  },
+  subtitle: {
+    color: '#64748B',
+    fontSize: 13,
+    textAlign: 'center',
+    marginTop: 6,
+    lineHeight: 18,
+  },
+
+  // CARD DE AUTENTICADO
+  successCard: {
+    width: '100%',
+    backgroundColor: '#0F172A',
+    borderRadius: 20,
+    padding: 24,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.3)',
+  },
+  verifiedIconContainer: {
+    marginBottom: 12,
+  },
+  successBadgeTitle: {
+    color: '#10B981',
+    fontSize: 11,
+    fontWeight: 'bold',
+    letterSpacing: 1.5,
+    marginBottom: 4,
+  },
+  successNameText: {
     color: '#F8FAFC',
     fontSize: 22,
     fontWeight: 'bold',
     textAlign: 'center',
-  },
-  subtitle: {
-    color: '#94A3B8',
-    fontSize: 13,
-    textAlign: 'center',
-    marginTop: 8,
-    lineHeight: 18,
-  },
-  cameraBoxContainer: {
-    width: '100%',
-    backgroundColor: '#161F30',
-    borderRadius: 16,
-    padding: 20,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#1E293B',
-  },
-  avatarFrame: {
-    width: 200,
-    height: 200,
-    borderRadius: 100,
-    overflow: 'hidden',
-    borderWidth: 3,
-    borderColor: '#38BDF8',
-    backgroundColor: '#0B0F17',
-    justifyContent: 'center',
-    alignItems: 'center',
     marginBottom: 20,
   },
-  avatarPlaceholder: {
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  avatarPlaceholderText: {
-    color: '#94A3B8',
-    fontSize: 12,
-    fontWeight: 'bold',
-    marginTop: 8,
-  },
-  capturedImage: {
-    width: '100%',
-    height: '100%',
-    resizeMode: 'cover',
-  },
-  loadingBox: {
-    alignItems: 'center',
-    marginVertical: 12,
-  },
-  loadingText: {
-    color: '#38BDF8',
-    fontSize: 13,
-    fontWeight: 'bold',
-    marginTop: 8,
-  },
-  statusText: {
-    color: '#F8FAFC',
-    fontSize: 13,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    marginVertical: 10,
-  },
-  takeSelfieBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#38BDF8',
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    borderRadius: 12,
-    width: '100%',
-    marginTop: 10,
-  },
-  takeSelfieBtnText: {
-    color: '#0D1117',
-    fontSize: 14,
-    fontWeight: 'bold',
-  },
-  ruleNoticeBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(245, 158, 11, 0.1)',
-    borderRadius: 8,
-    padding: 10,
-    marginTop: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(245, 158, 11, 0.3)',
-  },
-  ruleNoticeText: {
-    color: '#F59E0B',
-    fontSize: 11,
-    flex: 1,
-    lineHeight: 15,
-  },
-  verifiedCard: {
-    width: '100%',
-    backgroundColor: '#161F30',
-    borderRadius: 16,
-    padding: 20,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(16, 185, 129, 0.4)',
-  },
-  verifiedHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(16, 185, 129, 0.15)',
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 12,
-    marginBottom: 14,
-  },
-  verifiedDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#10B981',
-    marginRight: 6,
-  },
-  verifiedStatusText: {
-    color: '#10B981',
-    fontSize: 11,
-    fontWeight: 'bold',
-  },
-  loggedLabel: {
-    color: '#94A3B8',
-    fontSize: 12,
-  },
-  loggedName: {
-    color: '#F8FAFC',
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginTop: 4,
-    marginBottom: 20,
-    textAlign: 'center',
-  },
-  continueBtn: {
+  primaryActionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#10B981',
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    borderRadius: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderRadius: 14,
     width: '100%',
-    marginBottom: 10,
+    marginBottom: 12,
   },
-  continueBtnText: {
-    color: '#0D1117',
-    fontSize: 14,
+  primaryActionBtnText: {
+    color: '#070A11',
+    fontSize: 15,
     fontWeight: 'bold',
   },
-  logoutBtn: {
+  secondaryTextBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(239, 68, 68, 0.1)',
     paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    width: '100%',
   },
-  logoutBtnText: {
-    color: '#EF4444',
+  secondaryTextBtnText: {
+    color: '#94A3B8',
     fontSize: 12,
+    fontWeight: '500',
+  },
+
+  // FORMULÁRIO DE CÓDIGO NUMÉRICO
+  formContainer: {
+    width: '100%',
+    alignItems: 'center',
+  },
+  inputCard: {
+    width: '100%',
+    backgroundColor: '#0F172A',
+    borderRadius: 16,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 242, 254, 0.2)',
+  },
+  inputLabel: {
+    color: '#00F2FE',
+    fontSize: 11,
     fontWeight: 'bold',
+    letterSpacing: 1,
+    marginBottom: 12,
+  },
+  numericInputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#070A11',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 242, 254, 0.3)',
+  },
+  numericInput: {
+    flex: 1,
+    color: '#F8FAFC',
+    fontSize: 24,
+    fontWeight: 'bold',
+    letterSpacing: 3,
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+  },
+
+  // STATUS & BOTÃO
+  statusLoadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 14,
+  },
+  statusLoadingText: {
+    color: '#00F2FE',
+    fontSize: 13,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  statusInfoText: {
+    color: '#F8FAFC',
+    fontSize: 13,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginVertical: 14,
+  },
+  submitBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#00F2FE',
+    paddingVertical: 16,
+    paddingHorizontal: 28,
+    borderRadius: 16,
+    width: '100%',
+    marginTop: 20,
+  },
+  submitBtnText: {
+    color: '#070A11',
+    fontSize: 15,
+    fontWeight: 'bold',
+    letterSpacing: 1,
   },
 });

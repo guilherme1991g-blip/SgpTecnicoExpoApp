@@ -1134,6 +1134,60 @@ let cachedOnlineSet: Set<string> | null = null;
 let lastOnlineSetFetch = 0;
 
 /**
+ * Consulta o status Online/Offline real no RADIUS do SGP para uma lista específica de logins PPPoE
+ */
+export const checkLoginsOnlineStatus = async (logins: string[]): Promise<Set<string>> => {
+  const onlineSet = new Set<string>();
+  if (!logins || logins.length === 0) return onlineSet;
+
+  const validLogins = Array.from(
+    new Set(
+      logins
+        .map((l) => (l || '').trim().toLowerCase())
+        .filter((l) => l && l !== 'sem pppoe')
+    )
+  );
+
+  if (validLogins.length === 0) return onlineSet;
+
+  await Promise.all(
+    validLogins.map(async (login) => {
+      try {
+        const response = await api.post(
+          '/ws/radius/radacct/list/all/',
+          {
+            app: SGP_CONFIG.appName,
+            token: SGP_CONFIG.token,
+            username: login,
+          },
+          { headers: { 'Content-Type': 'application/json' } }
+        );
+
+        const list: any[] = Array.isArray(response.data?.result) ? response.data.result : [];
+        if (list.length > 0) {
+          const item = list[0];
+          const rad = item.radacct?.[0];
+
+          // Se item.online e true OU acctstoptime e null, o login esta ONLINE no RADIUS
+          const isOnline =
+            item.online === true ||
+            (rad && (rad.acctstoptime === null || rad.acctstoptime === '')) ||
+            Boolean(item.ip && item.ip.trim().length > 0);
+
+          if (isOnline) {
+            onlineSet.add(login);
+          }
+        }
+      } catch (err) {
+        console.warn(`Erro ao consultar status online do login ${login}:`, err);
+      }
+    })
+  );
+
+  return onlineSet;
+};
+
+/**
  * Busca o conjunto de logins PPPoE verdadeiramente ONLINE no servidor SGP RADIUS
  */
 export const fetchRealOnlineLoginsSet = async (forceRefresh: boolean = false): Promise<Set<string>> => {
@@ -1145,7 +1199,7 @@ export const fetchRealOnlineLoginsSet = async (forceRefresh: boolean = false): P
     const response = await api.post('/ws/radius/radacct/list/all/', {
       app: SGP_CONFIG.appName,
       token: SGP_CONFIG.token,
-      limit: 500,
+      limit: 5000,
       online: true,
     }, {
       headers: { 'Content-Type': 'application/json' },
@@ -1155,7 +1209,7 @@ export const fetchRealOnlineLoginsSet = async (forceRefresh: boolean = false): P
     const setLogins = new Set<string>();
 
     for (const item of list) {
-      const login = (item.pppoe_login || '').trim().toLowerCase();
+      const login = (item.pppoe_login || item.username || '').trim().toLowerCase();
       if (login) {
         setLogins.add(login);
       }
