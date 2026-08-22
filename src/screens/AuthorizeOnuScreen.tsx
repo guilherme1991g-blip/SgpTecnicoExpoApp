@@ -435,7 +435,10 @@ export const AuthorizeOnuScreen: React.FC<Props> = ({ onBackToOs }) => {
           {isLoadingUnauth ? (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="large" color="#F59E0B" />
-              <Text style={styles.loadingText}>Escaneando ONUs não autorizadas na OLT...</Text>
+              <Text style={styles.loadingText}>Comunicando com a {selectedOlt?.name} via SGP...</Text>
+              <Text style={[styles.loadingText, { fontSize: 12, color: '#94A3B8', marginTop: 4 }]}>
+                Aguarde: OLTs GPON podem levar até 20 segundos para responder.
+              </Text>
             </View>
           ) : unauthOnus.length === 0 ? (
             <View style={styles.emptyContainer}>

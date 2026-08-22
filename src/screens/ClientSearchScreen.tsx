@@ -45,6 +45,7 @@ export const ClientSearchScreen: React.FC<Props> = ({ onBackToOs }) => {
   const [onlineLoginsSet, setOnlineLoginsSet] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
+  const [isCheckingOnlineStatus, setIsCheckingOnlineStatus] = useState<boolean>(false);
 
   // ESTADOS DO MODAL DE DETALHES DO CONTRATO E DIAGNÓSTICO DA ONU
   const [selectedContract, setSelectedContract] = useState<{
@@ -78,22 +79,18 @@ export const ClientSearchScreen: React.FC<Props> = ({ onBackToOs }) => {
       // Filtra faturas em aberto/não pagas
       const openFaturas = data.filter((f) => {
         const statusLower = (f.status || '').toLowerCase();
-        return f.statusid !== 2 && !['pago', 'liquidado', 'cancelada', 'cancelado'].includes(statusLower);
+        return !statusLower.includes('pago') && !statusLower.includes('quitad') && !statusLower.includes('cancelad');
       });
-
-      // Ordena por vencimento crescente (já vencidas primeiro, depois as mais próximas)
-      openFaturas.sort((a, b) => (a.vencimento || '9999-99-99').localeCompare(b.vencimento || '9999-99-99'));
-
-      // Exibe as 3 próximas a vencer incluindo vencidas
-      setFaturas(openFaturas.slice(0, 3));
+      setFaturas(openFaturas.length > 0 ? openFaturas : data.slice(0, 3));
+      setIsLoadingFaturas(false);
     } catch (e) {
-      console.warn(`Erro ao carregar faturas do contrato #${contrato.id}:`, e);
-      setFaturas([]);
-    } finally {
       setIsLoadingFaturas(false);
     }
   };
 
+  /**
+   * Extrai o login PPPoE real descartando CPFs (que são apenas credenciais do portal do cliente)
+   */
   const getRealPppoeLogin = (c?: UraClienteContrato): string => {
     if (!c) return '';
     const servicoLogin = c.servicos?.[0]?.login?.trim();
@@ -117,33 +114,46 @@ export const ClientSearchScreen: React.FC<Props> = ({ onBackToOs }) => {
 
     setIsLoading(true);
     setHasSearched(true);
+    setIsCheckingOnlineStatus(true);
 
     try {
+      // 1. Busca os clientes no SGP URA e EXIBE OS RESULTADOS INSTANTANEAMENTE
       const results = await searchClientesSgp(q);
-      
+      setClientes(results);
+      setIsLoading(false);
+
+      // 2. Extrai logins dos contratos encontrados para validar status online no RADIUS em segundo plano
       const extractedLogins: string[] = [];
       results.forEach((cliente) => {
         cliente.contratos?.forEach((contrato) => {
           const login = getRealPppoeLogin(contrato);
-          if (login) extractedLogins.push(login);
+          if (login && login !== 'Sem PPPoE') {
+            extractedLogins.push(login);
+          }
         });
       });
 
-      const [specificOnlineSet, bulkOnlineSet]: [Set<string>, Set<string>] = await Promise.all([
-        checkLoginsOnlineStatus(extractedLogins),
-        fetchRealOnlineLoginsSet(true),
-      ]);
-
-      const mergedOnlineSet = new Set<string>([
-        ...Array.from(specificOnlineSet),
-        ...Array.from(bulkOnlineSet),
-      ]);
-
-      setClientes(results);
-      setOnlineLoginsSet(mergedOnlineSet);
-      setIsLoading(false);
+      // 3. Atualiza o status online/offline de forma assíncrona em segundo plano exibindo CARREGANDO...
+      if (extractedLogins.length > 0) {
+        Promise.all([
+          checkLoginsOnlineStatus(extractedLogins),
+          fetchRealOnlineLoginsSet(false),
+        ]).then(([specificOnlineSet, bulkOnlineSet]: [Set<string>, Set<string>]) => {
+          const mergedOnlineSet = new Set<string>([
+            ...Array.from(specificOnlineSet),
+            ...Array.from(bulkOnlineSet),
+          ]);
+          setOnlineLoginsSet(mergedOnlineSet);
+          setIsCheckingOnlineStatus(false);
+        }).catch(() => {
+          setIsCheckingOnlineStatus(false);
+        });
+      } else {
+        setIsCheckingOnlineStatus(false);
+      }
     } catch (err) {
       setIsLoading(false);
+      setIsCheckingOnlineStatus(false);
       setClientes([]);
     }
   };
@@ -337,12 +347,21 @@ export const ClientSearchScreen: React.FC<Props> = ({ onBackToOs }) => {
                     </View>
 
                     {/* STATUS ONLINE / OFFLINE BADGE REAL */}
-                    <View style={[styles.statusBadgeDot, { backgroundColor: isOnlineReal ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)' }]}>
-                      <View style={[styles.dotIndicator, { backgroundColor: isOnlineReal ? '#10B981' : '#EF4444' }]} />
-                      <Text style={[styles.statusBadgeDotText, { color: isOnlineReal ? '#10B981' : '#EF4444' }]}>
-                        {isOnlineReal ? 'ONLINE' : 'OFFLINE'}
-                      </Text>
-                    </View>
+                    {isCheckingOnlineStatus && !onlineLoginsSet.has(loginStr.toLowerCase()) && (!servicoIp || servicoIp === '0.0.0.0') ? (
+                      <View style={[styles.statusBadgeDot, { backgroundColor: 'rgba(245, 158, 11, 0.15)' }]}>
+                        <ActivityIndicator size="small" color="#F59E0B" style={{ marginRight: 4 }} />
+                        <Text style={[styles.statusBadgeDotText, { color: '#F59E0B' }]}>
+                          CARREGANDO...
+                        </Text>
+                      </View>
+                    ) : (
+                      <View style={[styles.statusBadgeDot, { backgroundColor: isOnlineReal ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)' }]}>
+                        <View style={[styles.dotIndicator, { backgroundColor: isOnlineReal ? '#10B981' : '#EF4444' }]} />
+                        <Text style={[styles.statusBadgeDotText, { color: isOnlineReal ? '#10B981' : '#EF4444' }]}>
+                          {isOnlineReal ? 'ONLINE' : 'OFFLINE'}
+                        </Text>
+                      </View>
+                    )}
                   </View>
 
                   {servico?.plano?.descricao || c.plano ? (

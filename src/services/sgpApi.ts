@@ -1029,57 +1029,30 @@ export const fetchAllClientesOfflineSgp = async (): Promise<OfflineClienteDetail
 
     const list: any[] = Array.isArray(response.data?.result) ? response.data.result : [];
 
-    // Busca o status URA em paralelo para cada item para rotular Ativo vs Suspenso
-    const enrichedList: OfflineClienteDetailedItem[] = await Promise.all(
-      list.map(async (item) => {
-        let statusContrato = 'Ativo';
-        const nome = item.nome || '';
-        const acctstoptime = item.radacct?.[0]?.acctstoptime || item.acctstoptime || item.stop_time;
+    // Mapeia instantaneamente a lista do RADIUS sem fazer centenas de chamadas extras HTTP
+    const enrichedList: OfflineClienteDetailedItem[] = list.map((item) => {
+      const rawB = item.endereco_bairro || item.endereco_logradouro || 'Outros';
+      const bairroCanonico = canonicalizeBairro(rawB);
+      const acctstoptime = item.radacct?.[0]?.acctstoptime || item.acctstoptime || item.stop_time;
 
-        if (nome) {
-          try {
-            const uraRes = await api.post('/api/ura/clientes/', {
-              app: SGP_CONFIG.appName,
-              token: SGP_CONFIG.token,
-              cliente_nome: nome.slice(0, 15),
-            });
-            const clis = uraRes.data?.clientes || [];
-            for (const c of clis) {
-              if (c.nome === nome && c.contratos && c.contratos.length > 0) {
-                const st = c.contratos[0].status || 'Ativo';
-                const mot = c.contratos[0].motivo_status || '';
-                statusContrato = mot ? `${st} (${mot})` : st;
-                break;
-              }
-            }
-          } catch (e) {
-            // fallback para Ativo
-          }
-        }
-
-
-        const rawB = item.endereco_bairro || item.endereco_logradouro || 'Outros';
-        const bairroCanonico = canonicalizeBairro(rawB);
-
-        return {
-          servico_id: item.servico_id,
-          nome: item.nome || 'Cliente SGP',
-          pppoe_login: item.pppoe_login || '',
-          pppoe_senha: item.pppoe_senha || '',
-          plano: item.plano || '',
-          endereco_logradouro: item.endereco_logradouro || '',
-          endereco_bairro: rawB,
-          bairroCanonico,
-          endereco_cidade: item.endereco_cidade || '',
-          endereco_uf: item.endereco_uf || '',
-          endereco: item.endereco || '',
-          online: false,
-          statusContrato,
-          acctstoptime,
-          radacct: item.radacct,
-        };
-      })
-    );
+      return {
+        servico_id: item.servico_id,
+        nome: item.nome || 'Cliente SGP',
+        pppoe_login: item.pppoe_login || '',
+        pppoe_senha: item.pppoe_senha || '',
+        plano: item.plano || '',
+        endereco_logradouro: item.endereco_logradouro || '',
+        endereco_bairro: rawB,
+        bairroCanonico,
+        endereco_cidade: item.endereco_cidade || '',
+        endereco_uf: item.endereco_uf || '',
+        endereco: item.endereco || '',
+        online: false,
+        statusContrato: item.status || 'Ativo',
+        acctstoptime,
+        radacct: item.radacct,
+      };
+    });
 
     // Filtra para remover contratos cancelados
     return enrichedList.filter((item) => {
@@ -1199,7 +1172,7 @@ export const fetchRealOnlineLoginsSet = async (forceRefresh: boolean = false): P
     const response = await api.post('/ws/radius/radacct/list/all/', {
       app: SGP_CONFIG.appName,
       token: SGP_CONFIG.token,
-      limit: 5000,
+      limit: 500,
       online: true,
     }, {
       headers: { 'Content-Type': 'application/json' },
@@ -1281,6 +1254,7 @@ export const fetchUnauthOnusForOltSgp = async (oltId: number): Promise<UnauthOnu
         app: SGP_CONFIG.appName,
         token: SGP_CONFIG.token,
       },
+      timeout: 60000, // 60s timeout para dar tempo da OLT comunicar via Telnet/SNMP com o SGP
     });
 
     if (Array.isArray(response.data)) {
