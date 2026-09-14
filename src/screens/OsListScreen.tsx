@@ -16,16 +16,17 @@ import {
 import { ChamadoItem } from '../types/sgp';
 import {
   fetchOrdensDeServicoFromSgp,
-  getFinalizedChamadosLocal,
 } from '../services/sgpApi';
 import { Feather } from '@expo/vector-icons';
 
 interface Props {
   onOsClick: (chamado: ChamadoItem) => void;
+  onOpenCreateOs?: () => void;
   onOpenClientSearch: () => void;
   onOpenOfflineClients: () => void;
   onOpenAuthorizeOnu?: () => void;
   onOpenOltConsultation?: () => void;
+  onOpenFinancial?: () => void;
   onLogout: () => void;
 }
 
@@ -140,10 +141,12 @@ const formatDateHeader = (
 
 export const OsListScreen: React.FC<Props> = ({
   onOsClick,
+  onOpenCreateOs,
   onOpenClientSearch,
   onOpenOfflineClients,
   onOpenAuthorizeOnu,
   onOpenOltConsultation,
+  onOpenFinancial,
   onLogout,
 }) => {
   const [selectedTab, setSelectedTab] = useState<number>(0); // 0=Abertas, 1=Em Execução, 2=Finalizadas (7d)
@@ -199,16 +202,14 @@ export const OsListScreen: React.FC<Props> = ({
   const loadChamados = async () => {
     setIsLoading(true);
     try {
-      const [activeOs, remoteFinalized, localFinalized] = await Promise.all([
+      const [activeOs, remoteFinalized] = await Promise.all([
         fetchOrdensDeServicoFromSgp(true, false),
         fetchOrdensDeServicoFromSgp(false, true),
-        getFinalizedChamadosLocal(),
       ]);
 
       const mapById = new Map<string, ChamadoItem>();
-      activeOs.forEach((item) => mapById.set(String(item.os_id), item));
-      remoteFinalized.forEach((item) => mapById.set(String(item.os_id), item));
-      localFinalized.forEach((item) => mapById.set(String(item.os_id), item));
+      activeOs.forEach((item: ChamadoItem) => mapById.set(String(item.os_id), item));
+      remoteFinalized.forEach((item: ChamadoItem) => mapById.set(String(item.os_id), item));
 
       setChamados(Array.from(mapById.values()));
     } catch (e) {
@@ -527,7 +528,27 @@ export const OsListScreen: React.FC<Props> = ({
 
             {/* DRAWER MENU ITEMS */}
             <View style={styles.drawerMenuItems}>
-              {/* ORDENS DE SERVIÇO */}
+              {/* ITEM 1 NO TOPO: CRIAR ORDEM DE SERVIÇO */}
+              <TouchableOpacity
+                style={styles.menuItemRow}
+                onPress={() => {
+                  setIsMenuOpen(false);
+                  if (onOpenCreateOs) onOpenCreateOs();
+                }}
+                activeOpacity={0.7}
+              >
+                <View style={[styles.menuItemIconCircle, { backgroundColor: 'rgba(56, 189, 248, 0.15)' }]}>
+                  <Feather name="plus-circle" size={18} color="#38BDF8" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.menuItemText, { color: '#38BDF8', fontWeight: 'bold' }]}>
+                    Abrir OS
+                  </Text>
+                  <Text style={styles.menuItemSubText}>Abertura rápida de chamados</Text>
+                </View>
+              </TouchableOpacity>
+
+              {/* ITEM 2: ORDENS DE SERVIÇO */}
               <TouchableOpacity
                 style={[styles.menuItemRow, styles.menuItemRowActive]}
                 onPress={() => setIsMenuOpen(false)}
@@ -615,6 +636,26 @@ export const OsListScreen: React.FC<Props> = ({
                 <View style={{ flex: 1 }}>
                   <Text style={styles.menuItemText}>Consulta de ONU</Text>
                   <Text style={styles.menuItemSubText}>Listar OLTs e ONUs por OLT</Text>
+                </View>
+              </TouchableOpacity>
+
+              {/* MÓDULO FINANCEIRO */}
+              <TouchableOpacity
+                style={styles.menuItemRow}
+                onPress={() => {
+                  setIsMenuOpen(false);
+                  if (onOpenFinancial) {
+                    onOpenFinancial();
+                  }
+                }}
+                activeOpacity={0.7}
+              >
+                <View style={styles.menuItemIconCircle}>
+                  <Feather name="dollar-sign" size={18} color="#10B981" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.menuItemText}>Financeiro</Text>
+                  <Text style={styles.menuItemSubText}>Módulo Administrativo</Text>
                 </View>
               </TouchableOpacity>
             </View>

@@ -82,6 +82,7 @@ export interface FacialVerificationResult {
   liberado: boolean;
   tecnico?: string;
   nome?: string;
+  role?: string;
   mensagem?: string;
   debugInfo?: {
     statusHttp?: number;
@@ -111,12 +112,35 @@ export const setLoggedTecnicoName = async (name: string): Promise<void> => {
   } catch {}
 };
 
+export const LOGGED_USER_ROLE_KEY = '@logged_user_role';
+
+/**
+ * Obtém o cargo do usuário salvo na sessão (atendente vs tecnico)
+ */
+export const getLoggedUserRole = async (): Promise<string> => {
+  try {
+    return (await AsyncStorage.getItem(LOGGED_USER_ROLE_KEY)) || 'tecnico';
+  } catch {
+    return 'tecnico';
+  }
+};
+
+/**
+ * Salva o cargo do usuário na sessão (atendente vs tecnico)
+ */
+export const setLoggedUserRole = async (role: string): Promise<void> => {
+  try {
+    await AsyncStorage.setItem(LOGGED_USER_ROLE_KEY, role);
+  } catch {}
+};
+
 /**
  * Encerra a sessão do técnico
  */
 export const logoutLoggedTecnico = async (): Promise<void> => {
   try {
     await AsyncStorage.removeItem(LOGGED_TECNICO_KEY);
+    await AsyncStorage.removeItem(LOGGED_USER_ROLE_KEY);
   } catch {}
 };
 
@@ -243,6 +267,28 @@ export const verifyNumericCodeSgp = async (
       data?.dados?.nome ||
       (Array.isArray(data) && (data[0]?.tecnico || data[0]?.nome));
 
+    const userRoleRaw =
+      data?.role ||
+      data?.cargo ||
+      data?.tipo ||
+      data?.funcao ||
+      data?.perfil ||
+      (data?.atendente === true ? 'atendente' : '') ||
+      '';
+
+    const userRoleStr = String(userRoleRaw).toLowerCase();
+    const isAtendente = userRoleStr.includes('atend') || data?.atendente === true;
+    const hasFinanceiro = userRoleStr.includes('finan') || data?.financeiro === true || data?.modulo_financeiro === true;
+
+    let finalRole = 'tecnico';
+    if (isAtendente && hasFinanceiro) {
+      finalRole = 'atendente_financeiro';
+    } else if (isAtendente) {
+      finalRole = 'atendente';
+    } else if (hasFinanceiro) {
+      finalRole = 'tecnico_financeiro';
+    }
+
     const isApproved =
       data?.liberado === true ||
       data?.sucesso === true ||
@@ -252,11 +298,13 @@ export const verifyNumericCodeSgp = async (
 
     if (isApproved && tecnicoNome) {
       await setLoggedTecnicoName(tecnicoNome);
+      await setLoggedUserRole(finalRole);
       return {
         sucesso: true,
         liberado: true,
         tecnico: tecnicoNome,
         nome: tecnicoNome,
+        role: finalRole,
         mensagem: `Identidade confirmada! Bem-vindo, ${tecnicoNome}.`,
         debugInfo: {
           statusHttp,
@@ -268,11 +316,13 @@ export const verifyNumericCodeSgp = async (
 
     if (response.ok && tecnicoNome) {
       await setLoggedTecnicoName(tecnicoNome);
+      await setLoggedUserRole(finalRole);
       return {
         sucesso: true,
         liberado: true,
         tecnico: tecnicoNome,
         nome: tecnicoNome,
+        role: finalRole,
         debugInfo: {
           statusHttp,
           respostaServidor: resText,
@@ -426,5 +476,260 @@ export const sendAttendanceWebhook = async (
   } catch (error) {
     console.warn(`[Webhook] Erro ao enviar webhook '${status}':`, error);
     return false;
+  }
+};
+
+export interface CreateOsWebhookPayload {
+  protocolo: string;
+  cliente: string;
+  descricao: string;
+  observacao?: string;
+  bairro?: string;
+  contratoId?: number | string;
+  osId?: number | string;
+  atendente?: string;
+}
+
+/**
+ * Envia o webhook de Abertura de O.S. para https://n8n.zentos.com.br/webhook-test/recebeos
+ * (com fallback para /webhook/recebeos) no formato formatado:
+ *
+ * 🚨 *OS Aberta!!*
+ * 📋 *Protocolo:*
+ * 👤 *Cliente:*
+ * 📝 *Descrição:*
+ * 📝 *Obs.:* (se houver)
+ * 📍 *Local:* (bairro)
+ */
+export const sendCreateOsWebhook = async (data: CreateOsWebhookPayload): Promise<boolean> => {
+  try {
+    const loggedTecnicoName = await getLoggedTecnicoName();
+    const atendenteFinal = data.atendente || loggedTecnicoName || 'Atendente';
+    const hardwareId = await getRealHardwareDeviceId();
+
+    const lines = [
+      '🚨 *OS Aberta!!*',
+      `📋 *Protocolo:* ${data.protocolo}`,
+      `👤 *Cliente:* ${data.cliente}`,
+      `📝 *Descrição:* ${data.descricao}`,
+    ];
+
+    if (data.observacao && data.observacao.trim().length > 0) {
+      lines.push(`📝 *Obs.:* ${data.observacao.trim()}`);
+    }
+
+    lines.push(`📍 *Local:* ${data.bairro?.trim() || 'Não informado'}`);
+
+    const mensagemFormatada = lines.join('\n');
+
+    const payload = {
+      mensagem: mensagemFormatada,
+      protocolo: data.protocolo,
+      cliente: data.cliente,
+      descricao: data.descricao,
+      observacao: data.observacao || '',
+      bairro: data.bairro || '',
+      atendente: atendenteFinal,
+      contrato_id: data.contratoId,
+      os_id: data.osId,
+      dispositivo_id: hardwareId,
+      timestamp: new Date().toISOString(),
+    };
+
+    const primaryUrl = 'https://n8n.zentos.com.br/webhook/recebeos';
+    const fallbackUrl = 'https://n8n.zentos.com.br/webhook-test/recebeos';
+
+    console.log('[Create OS Webhook] Enviando para n8n:', mensagemFormatada);
+
+    try {
+      let res = await fetch(primaryUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        res = await fetch(fallbackUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+      }
+      return res.ok;
+    } catch {
+      try {
+        const resFallback = await fetch(fallbackUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        return resFallback.ok;
+      } catch {
+        return false;
+      }
+    }
+  } catch (error) {
+    console.warn('[Create OS Webhook] Erro ao enviar webhook:', error);
+    return false;
+  }
+};
+
+export interface DespesaWebhookPayload {
+  tipo: 'despesa' | 'abastecimento';
+  descricao: string;
+  valor: string;
+  valorNumerico: number;
+  comprovanteBase64?: string;
+  data: string;
+  usuario: string;
+}
+
+export const SUPABASE_CONFIG = {
+  url: 'https://mtqkswikviiywcidnkwt.supabase.co',
+  key: 'sb_publishable_9qRckOwvDZm6pqCrZeAozw_frGDglf0',
+};
+
+/**
+ * Insere a despesa/abastecimento diretamente no Supabase
+ */
+export const insertDespesaSupabase = async (payload: {
+  tipo: string;
+  descricao: string;
+  valor: number;
+  comprovante_base64?: string;
+  data_lancamento: string;
+  usuario: string;
+  dispositivo_id?: string;
+}): Promise<boolean> => {
+  try {
+    const endpoint = `${SUPABASE_CONFIG.url}/rest/v1/despesas`;
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'apikey': SUPABASE_CONFIG.key,
+        'Authorization': `Bearer ${SUPABASE_CONFIG.key}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=representation',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      console.warn('[Supabase Insert Error]:', response.status, errText);
+      return false;
+    }
+    return true;
+  } catch (error) {
+    console.warn('[Supabase Exception]:', error);
+    return false;
+  }
+};
+
+/**
+ * Envia cadastro de despesa/abastecimento para o Supabase e Webhook n8n
+ */
+export const sendDespesasWebhook = async (data: DespesaWebhookPayload): Promise<boolean> => {
+  try {
+    const hardwareId = await getRealHardwareDeviceId();
+
+    // 1. Envia para a tabela despesas no Supabase
+    const payloadSupabase = {
+      tipo: data.tipo,
+      descricao: data.descricao,
+      valor: data.valorNumerico,
+      comprovante_base64: data.comprovanteBase64 || '',
+      data_lancamento: data.data,
+      usuario: data.usuario,
+      dispositivo_id: hardwareId,
+    };
+    const supabaseOk = await insertDespesaSupabase(payloadSupabase);
+
+    // 2. Envia para o Webhook n8n (com fallback)
+    const payloadWebhook = {
+      tipo: data.tipo,
+      descricao: data.descricao,
+      valor: data.valor,
+      valor_numerico: data.valorNumerico,
+      comprovante_base64: data.comprovanteBase64 || '',
+      data: data.data,
+      usuario: data.usuario,
+      dispositivo_id: hardwareId,
+      timestamp: new Date().toISOString(),
+    };
+
+    const primaryUrl = 'https://n8n.zentos.com.br/webhook/despesas';
+    const fallbackUrl = 'https://n8n.zentos.com.br/webhook-test/despesas';
+
+    try {
+      let res = await fetch(primaryUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payloadWebhook),
+      });
+
+      if (!res.ok) {
+        res = await fetch(fallbackUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payloadWebhook),
+        });
+      }
+      return supabaseOk || res.ok;
+    } catch {
+      try {
+        const resFallback = await fetch(fallbackUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payloadWebhook),
+        });
+        return supabaseOk || resFallback.ok;
+      } catch {
+        return supabaseOk;
+      }
+    }
+  } catch (error) {
+    console.warn('[Despesas Webhook/Supabase] Erro:', error);
+    return false;
+  }
+};
+
+export interface DespesaItemSupabase {
+  id?: number;
+  tipo: string;
+  descricao: string;
+  valor: number;
+  comprovante_base64?: string;
+  data_lancamento: string;
+  usuario: string;
+  dispositivo_id?: string;
+  created_at?: string;
+}
+
+/**
+ * Busca todas as despesas e abastecimentos cadastrados no Supabase
+ */
+export const fetchDespesasSupabase = async (): Promise<DespesaItemSupabase[]> => {
+  try {
+    const endpoint = `${SUPABASE_CONFIG.url}/rest/v1/despesas?select=*&order=id.desc`;
+    const response = await fetch(endpoint, {
+      method: 'GET',
+      headers: {
+        'apikey': SUPABASE_CONFIG.key,
+        'Authorization': `Bearer ${SUPABASE_CONFIG.key}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      console.warn('[Fetch Supabase Despesas HTTP Error]:', response.status);
+      return [];
+    }
+
+    const data = await response.json();
+    return Array.isArray(data) ? data : [];
+  } catch (error) {
+    console.warn('[Fetch Supabase Despesas Exception]:', error);
+    return [];
   }
 };

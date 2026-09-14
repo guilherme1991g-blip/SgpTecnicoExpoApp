@@ -13,7 +13,11 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.sgp.tecnico"
+      "bundleIdentifier": "com.sgp.tecnico",
+      "buildNumber": "2",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -36,7 +40,9 @@
       }
     },
     "plugins": [
-      "expo-font"
+      "expo-font",
+      "expo-splash-screen",
+      "expo-status-bar"
     ]
   }
 }

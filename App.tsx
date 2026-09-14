@@ -12,12 +12,16 @@ import { OfflineClientsScreen } from './src/screens/OfflineClientsScreen';
 import { AuthorizeOnuScreen } from './src/screens/AuthorizeOnuScreen';
 import { OltConsultationScreen } from './src/screens/OltConsultationScreen';
 import { FacialLoginScreen } from './src/screens/FacialLoginScreen';
+import { CreateOsScreen } from './src/screens/CreateOsScreen';
+import { FinancialScreen } from './src/screens/FinancialScreen';
 import { ChamadoItem } from './src/types/sgp';
 
 export type RootStackParamList = {
   Login: undefined;
   FacialLogin: undefined;
   OsList: undefined;
+  CreateOs: undefined;
+  Financial: undefined;
   OsDetail: { chamado: ChamadoItem };
   OsClose: { osId: number; chamado?: ChamadoItem };
   ClientSearch: undefined;
@@ -91,7 +95,14 @@ export default function App() {
             <Stack.Screen name="FacialLogin">
               {({ navigation }) => (
                 <FacialLoginScreen
-                  onLoginSuccess={() => navigation.replace('OsList')}
+                  onLoginSuccess={(_, userRole) => {
+                    const r = String(userRole || '').toLowerCase();
+                    if (r.includes('atend')) {
+                      navigation.replace('CreateOs');
+                    } else {
+                      navigation.replace('OsList');
+                    }
+                  }}
                 />
               )}
             </Stack.Screen>
@@ -102,14 +113,44 @@ export default function App() {
               )}
             </Stack.Screen>
 
-            <Stack.Screen name="OsList">
+            <Stack.Screen name="CreateOs">
               {({ navigation }) => (
-                <OsListScreen
-                  onOsClick={(chamado) => navigation.navigate('OsDetail', { chamado })}
+                <CreateOsScreen
+                  onBackToOsList={() => navigation.navigate('OsList')}
                   onOpenClientSearch={() => navigation.navigate('ClientSearch')}
                   onOpenOfflineClients={() => navigation.navigate('OfflineClients')}
                   onOpenAuthorizeOnu={() => navigation.navigate('AuthorizeOnu')}
                   onOpenOltConsultation={() => navigation.navigate('OltConsultation')}
+                  onOpenFinancial={() => navigation.navigate('Financial')}
+                  onLogout={() => navigation.replace('FacialLogin')}
+                />
+              )}
+            </Stack.Screen>
+
+            <Stack.Screen name="Financial">
+              {({ navigation }) => (
+                <FinancialScreen
+                  onBackToOsList={() => navigation.navigate('OsList')}
+                  onOpenCreateOs={() => navigation.navigate('CreateOs')}
+                  onOpenClientSearch={() => navigation.navigate('ClientSearch')}
+                  onOpenOfflineClients={() => navigation.navigate('OfflineClients')}
+                  onOpenAuthorizeOnu={() => navigation.navigate('AuthorizeOnu')}
+                  onOpenOltConsultation={() => navigation.navigate('OltConsultation')}
+                  onLogout={() => navigation.replace('FacialLogin')}
+                />
+              )}
+            </Stack.Screen>
+
+            <Stack.Screen name="OsList">
+              {({ navigation }) => (
+                <OsListScreen
+                  onOsClick={(chamado) => navigation.navigate('OsDetail', { chamado })}
+                  onOpenCreateOs={() => navigation.navigate('CreateOs')}
+                  onOpenClientSearch={() => navigation.navigate('ClientSearch')}
+                  onOpenOfflineClients={() => navigation.navigate('OfflineClients')}
+                  onOpenAuthorizeOnu={() => navigation.navigate('AuthorizeOnu')}
+                  onOpenOltConsultation={() => navigation.navigate('OltConsultation')}
+                  onOpenFinancial={() => navigation.navigate('Financial')}
                   onLogout={() => navigation.replace('FacialLogin')}
                 />
               )}

@@ -11,7 +11,9 @@ import {
   ScrollView,
   Platform,
   StatusBar,
+  Linking,
 } from 'react-native';
+import { WebView } from 'react-native-webview';
 import { OfflineClienteDetailedItem, fetchAllClientesOfflineSgp } from '../services/sgpApi';
 import { Feather } from '@expo/vector-icons';
 
@@ -24,6 +26,7 @@ export const OfflineClientsScreen: React.FC<Props> = ({ onBackToOs }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [selectedBairro, setSelectedBairro] = useState<string>('TODOS');
   const [searchQuery, setSearchQuery] = useState('');
+  const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
 
   const loadData = async () => {
     setIsLoading(true);
@@ -85,6 +88,87 @@ export const OfflineClientsScreen: React.FC<Props> = ({ onBackToOs }) => {
       return a.nome.localeCompare(b.nome, 'pt-BR');
     });
   }, [clientesOffline, selectedBairro, searchQuery]);
+
+  // Gera o HTML do mapa Leaflet interativo com pinos vermelhos para cada cliente offline
+  const generateMapHtml = useMemo(() => {
+    const markers = filteredList
+      .filter((item) => item.latitude !== undefined && item.longitude !== undefined)
+      .map((item) => ({
+        id: item.servico_id || item.nome,
+        nome: (item.nome || 'Cliente SGP').replace(/'/g, "\\'"),
+        status: (item.statusContrato || 'Ativo').toUpperCase().replace(/'/g, "\\'"),
+        endereco: (item.endereco_logradouro || item.endereco_bairro || item.bairroCanonico || '').replace(/'/g, "\\'"),
+        login: (item.pppoe_login || '').replace(/'/g, "\\'"),
+        lat: item.latitude,
+        lng: item.longitude,
+        exact: item.hasExactCoords ? 'SGP Coordenadas Exatas' : 'Região Bairro',
+      }));
+
+    const centerLat = markers.length > 0 ? markers[0].lat : -8.2435;
+    const centerLng = markers.length > 0 ? markers[0].lng : -35.4590;
+
+    return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    html, body, #map { width: 100%; height: 100%; margin: 0; padding: 0; background: #0B0F17; }
+    .leaflet-popup-content-wrapper { background: #111726 !important; color: #F8FAFC !important; border-radius: 12px; border: 1px solid #EF4444; padding: 4px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
+    .leaflet-popup-tip { background: #111726 !important; }
+    .client-popup-title { font-weight: bold; font-size: 13px; color: #F8FAFC; margin-bottom: 4px; }
+    .client-popup-sub { font-size: 11px; color: #94A3B8; margin-bottom: 4px; }
+    .client-popup-badge { display: inline-block; background: rgba(239,68,68,0.2); color: #EF4444; font-size: 10px; font-weight: bold; padding: 2px 6px; border-radius: 6px; margin-bottom: 6px; border: 1px solid rgba(239,68,68,0.4); }
+    .gps-btn { display: block; width: 100%; text-align: center; background: #EF4444; color: #FFFFFF !important; font-weight: bold; font-size: 11px; padding: 6px 0; border-radius: 6px; text-decoration: none; margin-top: 6px; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <script>
+    var map = L.map('map').setView([${centerLat}, ${centerLng}], 13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    var markersData = ${JSON.stringify(markers)};
+    var bounds = [];
+
+    markersData.forEach(function(c) {
+      if (c.lat && c.lng) {
+        bounds.push([c.lat, c.lng]);
+        
+        var redIcon = L.divIcon({
+          className: 'custom-red-pin',
+          html: '<div style="background-color:#EF4444;width:24px;height:24px;border-radius:50%;border:2px solid #FFFFFF;box-shadow:0 0 10px rgba(239,68,68,0.9);display:flex;align-items:center;justify-content:center;color:white;font-weight:bold;font-size:12px;">📍</div>',
+          iconSize: [24, 24],
+          iconAnchor: [12, 12]
+        });
+
+        var marker = L.marker([c.lat, c.lng], { icon: redIcon }).addTo(map);
+        
+        var popupHtml = '<div class="client-popup-title">🔴 ' + c.nome + '</div>' +
+          '<div class="client-popup-badge">OFFLINE • ' + c.status + '</div>' +
+          '<div class="client-popup-sub">📍 ' + c.endereco + '</div>' +
+          (c.login ? '<div class="client-popup-sub">👤 PPPoE: ' + c.login + '</div>' : '') +
+          '<div class="client-popup-sub" style="color:#64748B;font-size:10px;">🎯 ' + c.exact + '</div>' +
+          '<a class="gps-btn" href="https://www.google.com/maps/dir/?api=1&destination=' + c.lat + ',' + c.lng + '" target="_blank">🧭 NAVEGAR NO GPS</a>';
+        
+        marker.bindPopup(popupHtml);
+      }
+    });
+
+    if (bounds.length > 0) {
+      map.fitBounds(bounds, { padding: [30, 30] });
+    }
+  </script>
+</body>
+</html>
+    `;
+  }, [filteredList]);
 
   const renderItem = ({ item }: { item: OfflineClienteDetailedItem }) => {
     const isSuspenso = item.statusContrato.toLowerCase().includes('suspenso') || item.statusContrato.toLowerCase().includes('cancelad');
@@ -201,6 +285,31 @@ export const OfflineClientsScreen: React.FC<Props> = ({ onBackToOs }) => {
         ) : null}
       </View>
 
+      {/* TOGGLE MODO DE VISUALIZAÇÃO: LISTA vs MAPA COM PINOS VERMELHOS */}
+      <View style={styles.viewModeToggleRow}>
+        <TouchableOpacity
+          style={[styles.viewModeBtn, viewMode === 'list' && styles.viewModeBtnActive]}
+          onPress={() => setViewMode('list')}
+          activeOpacity={0.85}
+        >
+          <Feather name="list" size={14} color={viewMode === 'list' ? '#F59E0B' : '#64748B'} style={{ marginRight: 6 }} />
+          <Text style={[styles.viewModeBtnText, viewMode === 'list' && styles.viewModeBtnTextActive]}>
+            Lista ({filteredList.length})
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.viewModeBtn, viewMode === 'map' && styles.viewModeBtnActiveMap]}
+          onPress={() => setViewMode('map')}
+          activeOpacity={0.85}
+        >
+          <Feather name="map-pin" size={14} color={viewMode === 'map' ? '#EF4444' : '#64748B'} style={{ marginRight: 6 }} />
+          <Text style={[styles.viewModeBtnText, viewMode === 'map' && styles.viewModeBtnTextActiveMap]}>
+            Mapa (Pinos Vermelhos)
+          </Text>
+        </TouchableOpacity>
+      </View>
+
       {/* HORIZONTAL BAIRRO STRIP FILTER */}
       <View style={styles.bairroStripContainer}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.bairroStripContent}>
@@ -238,6 +347,31 @@ export const OfflineClientsScreen: React.FC<Props> = ({ onBackToOs }) => {
           <Feather name="check-circle" size={44} color="#10B981" />
           <Text style={styles.emptyTitle}>Nenhum Cliente Offline</Text>
           <Text style={styles.emptySub}>Não foram encontrados clientes offline para o bairro ou filtro selecionado.</Text>
+        </View>
+      ) : viewMode === 'map' ? (
+        <View style={styles.mapContainer}>
+          {Platform.OS === 'web' ? (
+            // @ts-ignore
+            <iframe
+              srcDoc={generateMapHtml}
+              style={{ width: '100%', height: '100%', border: 'none', borderRadius: 16 }}
+            />
+          ) : (
+            <WebView
+              originWhitelist={['*']}
+              source={{ html: generateMapHtml }}
+              style={{ flex: 1, borderRadius: 16 }}
+              javaScriptEnabled={true}
+              domStorageEnabled={true}
+              startInLoadingState={true}
+              renderLoading={() => (
+                <View style={styles.mapLoadingOverlay}>
+                  <ActivityIndicator size="large" color="#EF4444" />
+                  <Text style={{ color: '#94A3B8', marginTop: 10, fontSize: 13 }}>Carregando mapa de clientes offline...</Text>
+                </View>
+              )}
+            />
+          )}
         </View>
       ) : (
         <FlatList
@@ -468,5 +602,64 @@ const styles = StyleSheet.create({
     fontSize: 11,
     marginLeft: 5,
     fontWeight: '500',
+  },
+
+  // ESTILOS DO SELECTOR DE MODO DE VISUALIZAÇÃO E MAPA
+  viewModeToggleRow: {
+    flexDirection: 'row',
+    marginHorizontal: 16,
+    marginBottom: 10,
+    backgroundColor: '#161F30',
+    borderRadius: 12,
+    padding: 4,
+    borderWidth: 1,
+    borderColor: '#1E293B',
+  },
+  viewModeBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  viewModeBtnActive: {
+    backgroundColor: 'rgba(245, 158, 11, 0.15)',
+    borderWidth: 1,
+    borderColor: '#F59E0B',
+  },
+  viewModeBtnActiveMap: {
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    borderWidth: 1,
+    borderColor: '#EF4444',
+  },
+  viewModeBtnText: {
+    color: '#64748B',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  viewModeBtnTextActive: {
+    color: '#F59E0B',
+    fontWeight: '700',
+  },
+  viewModeBtnTextActiveMap: {
+    color: '#EF4444',
+    fontWeight: '700',
+  },
+  mapContainer: {
+    flex: 1,
+    marginHorizontal: 16,
+    marginBottom: 16,
+    borderRadius: 16,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#EF4444',
+    backgroundColor: '#0B0F17',
+  },
+  mapLoadingOverlay: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: '#0B0F17',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });

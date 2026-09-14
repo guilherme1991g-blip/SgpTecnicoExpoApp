@@ -21,7 +21,7 @@ import {
 } from '../services/webhookService';
 
 interface Props {
-  onLoginSuccess: (tecnicoNome: string) => void;
+  onLoginSuccess: (tecnicoNome: string, userRole?: string) => void;
   onSkip?: () => void;
 }
 
@@ -45,7 +45,7 @@ export const FacialLoginScreen: React.FC<Props> = ({ onLoginSuccess }) => {
   const handleValidateCode = async () => {
     const code = numericCode.trim();
     if (!code) {
-      Alert.alert('Atenção', 'Por favor, digite o seu código numérico de técnico.');
+      Alert.alert('Atenção', 'Por favor, digite o seu código numérico de acesso.');
       return;
     }
 
@@ -57,7 +57,8 @@ export const FacialLoginScreen: React.FC<Props> = ({ onLoginSuccess }) => {
       setIsLoading(false);
 
       if (res.sucesso && (res.tecnico || res.nome)) {
-        const nomeTecnico = res.tecnico || res.nome || `Técnico (${code})`;
+        const nomeTecnico = res.tecnico || res.nome || `Usuário (${code})`;
+        const userRole = res.role || 'tecnico';
         setLoggedTecnico(nomeTecnico);
         setStatusMsg('✅ Autenticado com Sucesso!');
 
@@ -67,7 +68,7 @@ export const FacialLoginScreen: React.FC<Props> = ({ onLoginSuccess }) => {
           [
             {
               text: 'Entrar no Sistema',
-              onPress: () => onLoginSuccess(nomeTecnico),
+              onPress: () => onLoginSuccess(nomeTecnico, userRole),
             },
           ]
         );

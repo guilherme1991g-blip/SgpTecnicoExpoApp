@@ -57,10 +57,10 @@ export const AuthorizeOnuScreen: React.FC<Props> = ({ onBackToOs }) => {
   // ETAPA 2: FORMULÁRIO DE PROVISIONAMENTO
   const [contratoId, setContratoId] = useState('');
   const [servicoLogin, setServicoLogin] = useState('');
-  const [modo, setModo] = useState('PPPoE'); // PPPoE, Router, Bridge
-  const [onuTipo, setOnuTipo] = useState('GPON'); // SGP ONU Type
-  const [onuTemplate, setOnuTemplate] = useState('DEFAULT'); // SGP OLT Template
-  const [vlan, setVlan] = useState(''); // NÃO PREENCHIDO POR PADRÃO
+  const [modo, setModo] = useState(''); // INICIALMENTE EM BRANCO
+  const [onuTipo, setOnuTipo] = useState(''); // INICIALMENTE EM BRANCO
+  const [onuTemplate, setOnuTemplate] = useState(''); // INICIALMENTE EM BRANCO
+  const [vlan, setVlan] = useState(''); // INICIALMENTE EM BRANCO
   const [descricao, setDescricao] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -125,23 +125,15 @@ export const AuthorizeOnuScreen: React.FC<Props> = ({ onBackToOs }) => {
     setSelectedContract(null);
     setContratoId('');
     setServicoLogin('');
-    setVlan(''); // VLAN NÃO PREENCHIDA POR PADRÃO
+    setModo('');
+    setOnuTipo('');
+    setOnuTemplate('');
+    setOnuTemplateId('');
+    setOnuTemplateLabel('');
+    setVlan('');
     setDescricao('');
     setFormError(null);
     setFormSuccess(null);
-
-    // Preenche ONU Tipo e Template vindos da API do SGP
-    if (item.type) {
-      setOnuTipo(item.type);
-    } else {
-      setOnuTipo('GPON');
-    }
-
-    if (selectedOlt?.olttype) {
-      setOnuTemplate(selectedOlt.olttype);
-    } else {
-      setOnuTemplate('DEFAULT');
-    }
 
     setPickerConfig((p) => ({ ...p, visible: false }));
     setIsModalOpen(true);
@@ -191,8 +183,8 @@ export const AuthorizeOnuScreen: React.FC<Props> = ({ onBackToOs }) => {
     setWizardStep(2);
   };
 
-  const [onuTemplateId, setOnuTemplateId] = useState('1');
-  const [onuTemplateLabel, setOnuTemplateLabel] = useState('Template ONU/ONT');
+  const [onuTemplateId, setOnuTemplateId] = useState('');
+  const [onuTemplateLabel, setOnuTemplateLabel] = useState('');
 
   // MONTA AS LISTAS REAIS DO SGP PARA O SELETOR EM LISTA
   const openModoPicker = async () => {
@@ -356,7 +348,7 @@ export const AuthorizeOnuScreen: React.FC<Props> = ({ onBackToOs }) => {
       {isLoadingOlts ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#38BDF8" />
-          <Text style={styles.loadingText}>Carregando OLTs cadastradas no SGP...</Text>
+          <Text style={styles.loadingText}>Carregando OLTs...</Text>
         </View>
       ) : !selectedOlt ? (
         <View style={{ flex: 1 }}>
@@ -435,10 +427,7 @@ export const AuthorizeOnuScreen: React.FC<Props> = ({ onBackToOs }) => {
           {isLoadingUnauth ? (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="large" color="#F59E0B" />
-              <Text style={styles.loadingText}>Comunicando com a {selectedOlt?.name} via SGP...</Text>
-              <Text style={[styles.loadingText, { fontSize: 12, color: '#94A3B8', marginTop: 4 }]}>
-                Aguarde: OLTs GPON podem levar até 20 segundos para responder.
-              </Text>
+              <Text style={styles.loadingText}>Buscando ONUs não autorizadas...</Text>
             </View>
           ) : unauthOnus.length === 0 ? (
             <View style={styles.emptyContainer}>
@@ -459,7 +448,7 @@ export const AuthorizeOnuScreen: React.FC<Props> = ({ onBackToOs }) => {
           ) : (
             <FlatList
               data={unauthOnus}
-              keyExtractor={(item, index) => (item.id ? String(item.id) : item.serial || item.mac || index.toString())}
+              keyExtractor={(item, index) => `${item.id || item.serial || item.mac || 'onu'}_s${item.slot ?? '0'}_p${item.pon ?? item.port ?? '0'}_idx${index}`}
               contentContainerStyle={styles.listContent}
               renderItem={({ item }) => {
                 const onuSerialStr = item.id !== undefined && item.id !== null ? String(item.id) : (item.serial || item.mac || item.gpon_sn || 'ONU Sem Serial');
@@ -655,7 +644,7 @@ export const AuthorizeOnuScreen: React.FC<Props> = ({ onBackToOs }) => {
                     {isSearchingClient ? (
                       <View style={{ paddingVertical: 20, alignItems: 'center' }}>
                         <ActivityIndicator size="small" color="#38BDF8" />
-                        <Text style={{ color: '#94A3B8', marginTop: 8, fontSize: 13 }}>Buscando contratos no SGP...</Text>
+                        <Text style={{ color: '#94A3B8', marginTop: 8, fontSize: 13 }}>Buscando contratos...</Text>
                       </View>
                     ) : searchResults.length > 0 ? (
                       searchResults.map((client) => (
@@ -768,7 +757,9 @@ export const AuthorizeOnuScreen: React.FC<Props> = ({ onBackToOs }) => {
                     <View style={styles.formGroup}>
                       <Text style={styles.formLabel}>Modo de Operação</Text>
                       <TouchableOpacity style={styles.selectListInput} onPress={openModoPicker} activeOpacity={0.8}>
-                        <Text style={styles.selectListValue}>{modo}</Text>
+                        <Text style={[styles.selectListValue, !modo && { color: '#64748B' }]}>
+                          {modo || 'Selecione um...'}
+                        </Text>
                         <Feather name="chevron-down" size={18} color="#38BDF8" />
                       </TouchableOpacity>
                     </View>
@@ -777,7 +768,9 @@ export const AuthorizeOnuScreen: React.FC<Props> = ({ onBackToOs }) => {
                     <View style={styles.formGroup}>
                       <Text style={styles.formLabel}>ONU Tipo</Text>
                       <TouchableOpacity style={styles.selectListInput} onPress={openOnuTipoPicker} activeOpacity={0.8}>
-                        <Text style={styles.selectListValue}>{onuTipo}</Text>
+                        <Text style={[styles.selectListValue, !onuTipo && { color: '#64748B' }]}>
+                          {onuTipo || 'Selecione um...'}
+                        </Text>
                         <Feather name="chevron-down" size={18} color="#38BDF8" />
                       </TouchableOpacity>
                     </View>
@@ -786,7 +779,9 @@ export const AuthorizeOnuScreen: React.FC<Props> = ({ onBackToOs }) => {
                     <View style={styles.formGroup}>
                       <Text style={styles.formLabel}>ONU Template</Text>
                       <TouchableOpacity style={styles.selectListInput} onPress={openOnuTemplatePicker} activeOpacity={0.8}>
-                        <Text style={styles.selectListValue}>{onuTemplateLabel}</Text>
+                        <Text style={[styles.selectListValue, !onuTemplateLabel && { color: '#64748B' }]}>
+                          {onuTemplateLabel || onuTemplate || 'Selecione um...'}
+                        </Text>
                         <Feather name="chevron-down" size={18} color="#38BDF8" />
                       </TouchableOpacity>
                     </View>

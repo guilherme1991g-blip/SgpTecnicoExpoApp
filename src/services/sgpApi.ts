@@ -43,16 +43,21 @@ export const saveFinalizedChamadoLocal = async (chamado: ChamadoItem) => {
   }
 };
 
-export const getFinalizedChamadosLocal = async (): Promise<ChamadoItem[]> => {
+export const CREATED_OS_STORAGE_KEY = '@sgp_created_chamados_v1';
+
+export const clearCreatedChamadosLocal = async (): Promise<void> => {
   try {
-    const existingRaw = await AsyncStorage.getItem(FINALIZED_STORAGE_KEY);
-    if (existingRaw) {
-      return JSON.parse(existingRaw);
-    }
-    return [];
-  } catch (e) {
-    return [];
-  }
+    await AsyncStorage.removeItem(CREATED_OS_STORAGE_KEY);
+  } catch {}
+};
+
+export const addChamadoLocal = async (): Promise<void> => {
+  await clearCreatedChamadosLocal();
+};
+
+export const getCreatedChamadosLocal = async (): Promise<any[]> => {
+  await clearCreatedChamadosLocal();
+  return [];
 };
 
 /**
@@ -1010,7 +1015,61 @@ export interface OfflineClienteDetailedItem {
   statusContrato: string;
   acctstoptime?: string;
   radacct?: any[];
+  latitude?: number;
+  longitude?: number;
+  hasExactCoords?: boolean;
 }
+
+/**
+  * Sanitiza e valida coordenadas GPS para a região de Pernambuco (Lat ~ -8.x, Lng ~ -35.x)
+  */
+export const sanitizePernambucoCoords = (
+  rawLat?: any,
+  rawLng?: any,
+  rawStr?: any
+): { lat: number; lng: number } | null => {
+  let lat: number | undefined = undefined;
+  let lng: number | undefined = undefined;
+
+  // 1. Tentar string no formato "lat, lng" ou "lng, lat"
+  if (rawStr && typeof rawStr === 'string' && rawStr.includes(',')) {
+    const parts = rawStr.split(',').map((p) => parseFloat(p.trim()));
+    if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+      lat = parts[0];
+      lng = parts[1];
+    }
+  }
+
+  // 2. Tentar campos numéricos lat/lng
+  if (lat === undefined && (rawLat !== undefined || rawLng !== undefined)) {
+    const parsedLat = typeof rawLat === 'number' ? rawLat : parseFloat(String(rawLat || ''));
+    const parsedLng = typeof rawLng === 'number' ? rawLng : parseFloat(String(rawLng || ''));
+    if (!isNaN(parsedLat) && !isNaN(parsedLng)) {
+      lat = parsedLat;
+      lng = parsedLng;
+    }
+  }
+
+  if (lat !== undefined && lng !== undefined && lat !== 0 && lng !== 0) {
+    // Garante sinal negativo (Pernambuco / Brasil fica nas coordenadas Sul/Oeste)
+    let finalLat = lat > 0 ? -lat : lat;
+    let finalLng = lng > 0 ? -lng : lng;
+
+    // Se estiver invertido (Lng em Lat, ex: finalLat ~ -35 e finalLng ~ -8)
+    if (Math.abs(finalLat) > 20 && Math.abs(finalLng) < 15) {
+      const temp = finalLat;
+      finalLat = finalLng;
+      finalLng = temp;
+    }
+
+    // Valida faixa de latitude (-6.0 a -10.0) e longitude (-33.0 a -38.0) para Pernambuco
+    if (finalLat <= -6.0 && finalLat >= -10.0 && finalLng <= -33.0 && finalLng >= -38.0) {
+      return { lat: Number(finalLat.toFixed(6)), lng: Number(finalLng.toFixed(6)) };
+    }
+  }
+
+  return null;
+};
 
 /**
  * Busca TODOS os clientes offline no SGP via /ws/radius/radacct/list/all/
@@ -1029,11 +1088,39 @@ export const fetchAllClientesOfflineSgp = async (): Promise<OfflineClienteDetail
 
     const list: any[] = Array.isArray(response.data?.result) ? response.data.result : [];
 
+    // Coordenada padrão de fallback solicitada quando o contrato não tiver GPS no SGP (-7.8771171, -35.8609273)
+    const DEFAULT_FALLBACK_COORDS = { lat: -7.8771171, lng: -35.8609273 };
+
     // Mapeia instantaneamente a lista do RADIUS sem fazer centenas de chamadas extras HTTP
-    const enrichedList: OfflineClienteDetailedItem[] = list.map((item) => {
+    const enrichedList: OfflineClienteDetailedItem[] = list.map((item, index) => {
       const rawB = item.endereco_bairro || item.endereco_logradouro || 'Outros';
       const bairroCanonico = canonicalizeBairro(rawB);
       const acctstoptime = item.radacct?.[0]?.acctstoptime || item.acctstoptime || item.stop_time;
+
+      // 1. Tentar sanitizar coordenadas exatas do SGP (verificando todos os campos possíveis do contrato)
+      const rawLLString = item.contrato_endereco_ll || item.endereco_ll || item.coordenadas || item.gps || item.ll || item.map_ll || item.location;
+      const rawLatVal = item.latitude || item.lat || item.os_latitude || item.endereco_latitude;
+      const rawLngVal = item.longitude || item.lng || item.os_longitude || item.endereco_longitude;
+
+      const exactCoords = sanitizePernambucoCoords(rawLatVal, rawLngVal, rawLLString);
+
+      let lat: number;
+      let lng: number;
+      let hasExactCoords: boolean;
+
+      if (exactCoords) {
+        lat = exactCoords.lat;
+        lng = exactCoords.lng;
+        hasExactCoords = true;
+      } else {
+        // 2. Se o contrato não tiver coordenadas exatas no SGP, marca no ponto solicitado (-7.8771171, -35.8609273)
+        const seed = (item.servico_id || index) * 0.00137;
+        const latOffset = Math.sin(seed) * 0.0004;
+        const lngOffset = Math.cos(seed) * 0.0004;
+        lat = Number((DEFAULT_FALLBACK_COORDS.lat + latOffset).toFixed(7));
+        lng = Number((DEFAULT_FALLBACK_COORDS.lng + lngOffset).toFixed(7));
+        hasExactCoords = false;
+      }
 
       return {
         servico_id: item.servico_id,
@@ -1051,6 +1138,9 @@ export const fetchAllClientesOfflineSgp = async (): Promise<OfflineClienteDetail
         statusContrato: item.status || 'Ativo',
         acctstoptime,
         radacct: item.radacct,
+        latitude: lat,
+        longitude: lng,
+        hasExactCoords,
       };
     });
 
@@ -2058,3 +2148,231 @@ export const fetchFaturasContratoSgp = async (contratoId: number | string): Prom
     return [];
   }
 };
+
+export interface SgpMotivoOsItem {
+  id: number;
+  codigo?: number;
+  descricao: string;
+}
+
+/**
+ * Busca a lista oficial de motivos de O.S. no SGP (GET /api/os/ocorrencia/motivo/list/)
+ */
+export const fetchSgpMotivosOs = async (): Promise<SgpMotivoOsItem[]> => {
+  try {
+    const response = await api.get('/api/os/ocorrencia/motivo/list/', {
+      params: {
+        app: SGP_CONFIG.appName,
+        token: SGP_CONFIG.token,
+      },
+    });
+
+    if (Array.isArray(response.data)) {
+      return response.data;
+    }
+    return [];
+  } catch (error) {
+    console.warn('Erro ao buscar motivos de O.S. no SGP:', error);
+    return [
+      { id: 1, codigo: 1, descricao: 'Acesso Lento' },
+      { id: 2, codigo: 2, descricao: 'Suporte - Sem Acesso' },
+      { id: 3, codigo: 3, descricao: 'Instalacao' },
+      { id: 4, codigo: 4, descricao: 'Mudança de Endereço' },
+      { id: 5, codigo: 100, descricao: 'OS cliente' },
+    ];
+  }
+};
+
+export interface CreateChamadoPayload {
+  contrato: number | string;
+  ocorrenciatipo?: number;
+  motivoos: number | string;
+  conteudo: string;
+  observacao?: string;
+  conteudolimpo?: number;
+  data_hora_agendamento?: string;
+}
+
+/**
+ * Gera a string de data e hora atual no formato exato exigido pelo SGP (AAAA-MM-DD HH:mm)
+ */
+export const getCurrentSgpDateTime = (): string => {
+  const now = new Date();
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const dd = String(now.getDate()).padStart(2, '0');
+  const hh = String(now.getHours()).padStart(2, '0');
+  const min = String(now.getMinutes()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd} ${hh}:${min}`;
+};
+
+/**
+ * Cria a O.S. / Chamado oficialmente no SGP (POST /api/ura/chamado/)
+ */
+export const createChamadoSgp = async (payload: CreateChamadoPayload): Promise<{
+  status?: number;
+  id?: number;
+  protocolo?: string;
+  razaoSocial?: string;
+  msg?: string;
+}> => {
+  try {
+    const body = {
+      app: SGP_CONFIG.appName,
+      token: SGP_CONFIG.token,
+      contrato: Number(payload.contrato),
+      ocorrenciatipo: 5, // SEMPRE 5
+      motivoos: Number(payload.motivoos),
+      conteudo: payload.conteudo,
+      observacao: payload.observacao || 'Aberto pelo aplicativo SGP',
+      conteudolimpo: 1, // SEMPRE 1
+      data_hora_agendamento: payload.data_hora_agendamento || getCurrentSgpDateTime(), // SEMPRE DATA E HORA ATUAL
+    };
+
+    const response = await api.post('/api/ura/chamado/', body, {
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+    return response.data;
+  } catch (error: any) {
+    console.warn('Erro ao criar O.S. no SGP /api/ura/chamado/:', error);
+    throw new Error(error?.response?.data?.msg || error?.message || 'Falha ao abrir Ordem de Serviço no SGP');
+  }
+};
+
+export interface SgpTituloItem {
+  id: number;
+  clienteNome: string;
+  clienteCpfcnpj?: string;
+  clienteContrato?: number;
+  portador?: string;
+  numeroDocumento?: number;
+  nossoNumero?: string;
+  link?: string;
+  link_cobranca?: string;
+  status: string;
+  valor: number;
+  valorDesconto?: number;
+  valorCorrigido?: number;
+  valorPago?: number;
+  codigoBarras?: string;
+  linhaDigitavel?: string;
+  dataVencimento?: string;
+  dataPagamento?: string;
+  formaPagamento?: string;
+  usuario_baixa?: string;
+  codigoPix?: string;
+  dataEmissao?: string;
+  dataCancelamento?: string;
+  demonstrativo?: string;
+}
+
+/**
+ * Busca a lista de titulos/recebimentos abertos no SGP (POST /api/ura/titulos/)
+ * Filtra por data_pagamento_inicio e data_pagamento_fim (formato AAAA-MM-DD).
+ * Por padrão busca os últimos 7 dias.
+ */
+export const fetchSgpTitulosAbertos = async (
+  dataPagamentoInicio?: string,
+  dataPagamentoFim?: string,
+): Promise<SgpTituloItem[]> => {
+  try {
+    // Calcula datas padrão: últimos 7 dias
+    const now = new Date();
+    const fim = dataPagamentoFim || formatDateYMD(now);
+    const inicioDefault = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const inicio = dataPagamentoInicio || formatDateYMD(inicioDefault);
+
+    const formData = new FormData();
+    formData.append('token', SGP_CONFIG.token);
+    formData.append('app', SGP_CONFIG.appName);
+    formData.append('status', 'abertos');
+    formData.append('data_pagamento_inicio', inicio);
+    formData.append('data_pagamento_fim', fim);
+
+    const response = await api.post('/api/ura/titulos/', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+
+    if (response.data && Array.isArray(response.data.titulos)) {
+      return response.data.titulos;
+    }
+    if (Array.isArray(response.data)) {
+      return response.data;
+    }
+    return [];
+  } catch (error) {
+    console.warn('[fetchSgpTitulosAbertos] Erro ao buscar títulos no SGP:', error);
+    return [];
+  }
+};
+
+/**
+ * Busca a lista de títulos/recebimentos PAGOS no SGP (POST /api/ura/titulos/)
+ * Filtra por status="pagos", data_pagamento_inicio e data_pagamento_fim.
+ * Paginado: realiza busca por páginas (limit=250) até acumular todos os títulos.
+ */
+export const fetchSgpTitulosPagos = async (
+  dataPagamentoInicio: string,
+  dataPagamentoFim: string,
+): Promise<SgpTituloItem[]> => {
+  const allTitulos: SgpTituloItem[] = [];
+  let offset = 0;
+  const limit = 250;
+  let hasMore = true;
+
+  try {
+    while (hasMore) {
+      const formData = new FormData();
+      formData.append('token', SGP_CONFIG.token);
+      formData.append('app', SGP_CONFIG.appName);
+      formData.append('status', 'pagos');
+      formData.append('data_pagamento_inicio', dataPagamentoInicio);
+      formData.append('data_pagamento_fim', dataPagamentoFim);
+      formData.append('offset', String(offset));
+      formData.append('limit', String(limit));
+
+      const response = await api.post('/api/ura/titulos/', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+
+      const data = response.data;
+      if (data && Array.isArray(data.titulos)) {
+        allTitulos.push(...data.titulos);
+
+        const paginacao = data.paginacao;
+        if (paginacao && typeof paginacao.total === 'number') {
+          offset += limit;
+          if (offset >= paginacao.total) {
+            hasMore = false;
+          }
+        } else {
+          hasMore = false;
+        }
+      } else {
+        hasMore = false;
+      }
+    }
+
+    return allTitulos;
+  } catch (error) {
+    console.warn('[fetchSgpTitulosPagos] Erro ao buscar títulos pagos no SGP:', error);
+    return [];
+  }
+};
+
+/**
+ * Formata uma Date em string AAAA-MM-DD
+ */
+function formatDateYMD(date: Date): string {
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+
