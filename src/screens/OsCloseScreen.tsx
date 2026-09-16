@@ -15,7 +15,8 @@ import {
 } from 'react-native';
 import * as Device from 'expo-device';
 import * as ImagePicker from 'expo-image-picker';
-import { updateChamadoStatus, addAnexoBase64, saveFinalizedChamadoLocal, ChamadoItem } from '../services/sgpApi';
+import * as Location from 'expo-location';
+import { updateChamadoStatus, updateContratoLocalizacao, addAnexoBase64, saveFinalizedChamadoLocal, ChamadoItem } from '../services/sgpApi';
 import { sendAttendanceWebhook } from '../services/webhookService';
 import { Feather } from '@expo/vector-icons';
 
@@ -123,6 +124,25 @@ export const OsCloseScreen: React.FC<Props> = ({ osId, chamado, onBack, onFinish
     setErrorMsg(null);
 
     try {
+      // 0. Captura a localização GPS no momento exato do encerramento da O.S.
+      let lat: number | undefined = undefined;
+      let lng: number | undefined = undefined;
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status === 'granted') {
+          const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+          lat = loc.coords.latitude;
+          lng = loc.coords.longitude;
+
+          const targetServicoId = chamado?.contrato_id || chamado?.cliente_id || 0;
+          if (targetServicoId) {
+            await updateContratoLocalizacao(Number(targetServicoId), lat, lng);
+          }
+        }
+      } catch (locErr) {
+        console.warn('Erro ao obter localização no encerramento:', locErr);
+      }
+
       // Captura o nome, marca e modelo do celular do técnico
       const deviceParts = [
         Device.deviceName,
@@ -131,24 +151,29 @@ export const OsCloseScreen: React.FC<Props> = ({ osId, chamado, onBack, onFinish
       ].filter(Boolean);
 
       const deviceNameStr = deviceParts.length > 0 ? deviceParts.join(' - ') : 'Dispositivo Móvel';
-      const deviceNote = `[Dispositivo: ${deviceNameStr}]`;
+      const gpsNote = lat && lng ? `\n[Localização de Encerramento: ${lat}, ${lng}]` : '';
+      const deviceNote = `[Dispositivo: ${deviceNameStr}]${gpsNote}`;
       const finalObs = observacao.trim()
         ? `${observacao.trim()}\n\n${deviceNote}`
         : deviceNote;
 
-      // 1. Atualiza status da O.S. para Encerrada (os_status: 1)
+      // 1. Atualiza status da O.S. para Encerrada (os_status: 1) com coordenadas GPS
       await updateChamadoStatus(
         osId,
         1,
         servicoPrestado,
-        finalObs
+        finalObs,
+        lat,
+        lng
       );
 
-      // 2. Dispara webhook de atendimento concluído para n8n em segundo plano
+      // 2. Dispara webhook de atendimento concluído para n8n em segundo plano com coordenadas
+      const coordsFormatted = lat && lng ? `${lat},${lng}` : undefined;
       sendAttendanceWebhook('concluido', chamado, {
         servicoPrestado,
         observacao: finalObs,
         osId,
+        coordsFormatted,
       }).catch((err) => console.warn('Erro ao disparar webhook concluido:', err));
 
       await saveFinalizedChamadoLocal({

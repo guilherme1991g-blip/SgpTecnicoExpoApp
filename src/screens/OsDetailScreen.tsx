@@ -344,59 +344,25 @@ export const OsDetailScreen: React.FC<Props> = ({ chamado, onBack, onCloseOsClic
   const handleStartOs = async () => {
     setIsLoading(true);
 
-    // VERIFICA SE O CONTRATO JÁ POSSUI LOCALIZAÇÃO/COORDENADAS SALVAS NO SGP
-    const hasExistingLocation = Boolean(
-      currentCoords && currentCoords.trim().length > 0
-    );
-
-    let lat: number | undefined = undefined;
-    let lng: number | undefined = undefined;
-
-    // SÓ CAPTURA E SALVA AS COORDENADAS NO CONTRATO SE AINDA NÃO HOUVER LOCALIZAÇÃO SALVA
-    if (!hasExistingLocation) {
-      try {
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status === 'granted') {
-          const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-          lat = loc.coords.latitude;
-          lng = loc.coords.longitude;
-
-          const targetServicoId = chamado.contrato_id || chamado.cliente_id || 0;
-          // Salva a localização inicial no contrato via API Suporte SGP
-          await updateContratoLocalizacao(Number(targetServicoId), lat, lng);
-          const coordsFormatted = `${lat},${lng}`;
-          setCurrentCoords(coordsFormatted);
-          chamado.contrato_endereco_ll = coordsFormatted;
-        }
-      } catch (locErr) {
-        console.warn('Erro ao obter coordenadas GPS iniciais:', locErr);
-      }
-    }
-
     try {
       // os_status: 2 (Em Execução - Permanece na tela da O.S. ABERTA em atendimento)
       await updateChamadoStatus(
         numericOsId,
         2,
         undefined,
-        lat && lng
-          ? `[TÉCNICO] Atendimento iniciado e localização inicial cadastrada no contrato SGP (${lat}, ${lng})`
-          : 'Em execução pelo técnico de campo',
-        lat,
-        lng
+        'Em execução pelo técnico de campo'
       );
       setIsLoading(false);
       setCurrentOsStatus(2);
 
       // Dispara webhook de atendimento iniciado em segundo plano para n8n
-      const coordsFormatted = lat && lng ? `${lat},${lng}` : undefined;
-      sendAttendanceWebhook('iniciado', chamado, { coordsFormatted }).catch((err) =>
+      sendAttendanceWebhook('iniciado', chamado).catch((err) =>
         console.warn('Erro ao disparar webhook iniciado:', err)
       );
 
       Alert.alert(
         'Atendimento Iniciado!',
-        `A O.S. #${numericOsId} agora está EM EXECUÇÃO.${!hasExistingLocation && lat && lng ? '\nLocalização inicial capturada e salva no contrato do cliente!' : ''}`,
+        `A O.S. #${numericOsId} agora está EM EXECUÇÃO.`,
         [{ text: 'OK' }]
       );
     } catch (e) {
