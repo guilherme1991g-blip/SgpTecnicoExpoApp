@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -28,7 +28,7 @@ import {
   fetchOnuLiveInfoSgp,
   fetchPppoeActiveSessionSgp,
 } from '../services/sgpApi';
-import { sendAttendanceWebhook } from '../services/webhookService';
+import { sendAttendanceWebhook, sendTechnicianLocationTrackingWebhook } from '../services/webhookService';
 import { Feather } from '@expo/vector-icons';
 
 interface Props {
@@ -341,33 +341,90 @@ export const OsDetailScreen: React.FC<Props> = ({ chamado, onBack, onCloseOsClic
     }
   };
 
+  // RASTREAMENTO EM TEMPO REAL DA LOCALIZAÇÃO DO TÉCNICO ENQUANTO A O.S. ESTIVER EM EXECUÇÃO (STATUS 2)
+  useEffect(() => {
+    let intervalId: any = null;
+
+    if (currentOsStatus === 2) {
+      // Configura loop de atualização a cada 20 segundos
+      intervalId = setInterval(async () => {
+        try {
+          const { status } = await Location.requestForegroundPermissionsAsync();
+          if (status === 'granted') {
+            const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+            sendTechnicianLocationTrackingWebhook(
+              numericOsId,
+              loc.coords.latitude,
+              loc.coords.longitude,
+              chamado
+            ).catch((err) => console.warn('Erro ao enviar rastreamento em tempo real:', err));
+          }
+        } catch (err) {
+          console.warn('Erro no loop de rastreamento:', err);
+        }
+      }, 20000);
+    }
+
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [currentOsStatus, numericOsId, chamado]);
+
   const handleStartOs = async () => {
     setIsLoading(true);
 
+    let lat: number | undefined = undefined;
+    let lng: number | undefined = undefined;
+
     try {
-      // os_status: 2 (Em Execução - Permanece na tela da O.S. ABERTA em atendimento)
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status === 'granted') {
+        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+        lat = loc.coords.latitude;
+        lng = loc.coords.longitude;
+      }
+    } catch (locErr) {
+      console.warn('Erro ao obter GPS inicial do técnico:', locErr);
+    }
+
+    try {
+      const coordsFormatted = lat && lng ? `${lat},${lng}` : undefined;
+      const linkTracking = lat && lng ? `https://www.google.com/maps?q=${lat},${lng}` : undefined;
+
+      // os_status: 2 (Em Execução - Atendimento iniciado com rastreamento ativado)
       await updateChamadoStatus(
         numericOsId,
         2,
         undefined,
-        'Em execução pelo técnico de campo'
+        lat && lng
+          ? `[RASTREAMENTO TEMPO REAL INICIADO] Técnico a caminho. Localização (${lat}, ${lng})`
+          : 'Em execução pelo técnico de campo',
+        lat,
+        lng
       );
+
       setIsLoading(false);
       setCurrentOsStatus(2);
 
-      // Dispara webhook de atendimento iniciado em segundo plano para n8n
-      sendAttendanceWebhook('iniciado', chamado).catch((err) =>
-        console.warn('Erro ao disparar webhook iniciado:', err)
-      );
+      // Dispara webhook de atendimento iniciado com dados de localização para o cliente acompanhar
+      sendAttendanceWebhook('iniciado', chamado, {
+        coordsFormatted,
+        latitude: lat,
+        longitude: lng,
+        linkTracking,
+      }).catch((err) => console.warn('Erro ao disparar webhook iniciado:', err));
+
+      if (lat && lng) {
+        sendTechnicianLocationTrackingWebhook(numericOsId, lat, lng, chamado).catch(() => {});
+      }
 
       Alert.alert(
         'Atendimento Iniciado!',
-        `A O.S. #${numericOsId} agora está EM EXECUÇÃO.`,
+        `A O.S. #${numericOsId} agora está EM EXECUÇÃO.\n\n📍 Sua localização em tempo real foi enviada! O cliente já pode acompanhar o seu deslocamento.`,
         [{ text: 'OK' }]
       );
     } catch (e) {
       setIsLoading(false);
-      // Mesmo se houver aviso local, dispara webhook iniciado
       sendAttendanceWebhook('iniciado', chamado).catch(() => {});
       Alert.alert('Atenção', 'O atendimento foi atualizado no SGP.');
       setCurrentOsStatus(2);
@@ -690,14 +747,39 @@ export const OsDetailScreen: React.FC<Props> = ({ chamado, onBack, onCloseOsClic
         )}
 
         {isEmExecucao && (
-          <TouchableOpacity
-            style={[styles.mainActionBtn, { backgroundColor: '#10B981' }]}
-            onPress={handleFinishOsClick}
-            activeOpacity={0.85}
-          >
-            <Feather name="check-circle" size={18} color="#0F172A" />
-            <Text style={[styles.mainActionBtnText, { color: '#0F172A' }]}>Concluir e Finalizar O.S.</Text>
-          </TouchableOpacity>
+          <View style={{ marginBottom: 12 }}>
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                backgroundColor: 'rgba(16, 185, 129, 0.12)',
+                borderWidth: 1,
+                borderColor: 'rgba(16, 185, 129, 0.3)',
+                borderRadius: 12,
+                padding: 12,
+                marginBottom: 10,
+              }}
+            >
+              <Feather name="navigation" size={18} color="#10B981" style={{ marginRight: 10 }} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: '#10B981', fontWeight: 'bold', fontSize: 13 }}>
+                  📡 Rastreamento GPS em Tempo Real Ativo
+                </Text>
+                <Text style={{ color: '#94A3B8', fontSize: 11, marginTop: 2 }}>
+                  Sua localização está sendo transmitida ao vivo para acompanhamento do cliente.
+                </Text>
+              </View>
+            </View>
+
+            <TouchableOpacity
+              style={[styles.mainActionBtn, { backgroundColor: '#10B981' }]}
+              onPress={handleFinishOsClick}
+              activeOpacity={0.85}
+            >
+              <Feather name="check-circle" size={18} color="#0F172A" />
+              <Text style={[styles.mainActionBtnText, { color: '#0F172A' }]}>Concluir e Finalizar O.S.</Text>
+            </TouchableOpacity>
+          </View>
         )}
 
         {isEncerrada && (

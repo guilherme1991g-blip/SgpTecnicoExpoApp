@@ -75,6 +75,12 @@ export interface AttendanceWebhookPayload {
     plataforma?: string | null;
     is_device?: boolean | null;
   };
+  localizacao_tecnico?: {
+    latitude?: number;
+    longitude?: number;
+    coordenadas?: string;
+    link_rastreamento?: string;
+  };
 }
 
 export interface FacialVerificationResult {
@@ -371,6 +377,9 @@ export const sendAttendanceWebhook = async (
     observacao?: string;
     coordsFormatted?: string;
     osId?: number;
+    latitude?: number;
+    longitude?: number;
+    linkTracking?: string;
   }
 ): Promise<boolean> => {
   try {
@@ -390,6 +399,11 @@ export const sendAttendanceWebhook = async (
     const protocoloStr = chamado?.oc_protocolo || '';
 
     const deviceId = await getRealHardwareDeviceId();
+
+    const techLat = extra?.latitude;
+    const techLng = extra?.longitude;
+    const coordsStr = extra?.coordsFormatted || (techLat && techLng ? `${techLat},${techLng}` : undefined);
+    const trackingLinkStr = extra?.linkTracking || (techLat && techLng ? `https://www.google.com/maps?q=${techLat},${techLng}` : undefined);
 
     const payload: AttendanceWebhookPayload = {
       status,
@@ -422,7 +436,7 @@ export const sendAttendanceWebhook = async (
         bairro: chamado?.endereco_bairro || '',
         cidade: chamado?.endereco_cidade || '',
         uf: chamado?.endereco_uf || '',
-        coordenadas: extra?.coordsFormatted || chamado?.contrato_endereco_ll || '',
+        coordenadas: coordsStr || chamado?.contrato_endereco_ll || '',
       },
       dados_celular: {
         dispositivo_id: deviceId,
@@ -434,6 +448,12 @@ export const sendAttendanceWebhook = async (
         plataforma: Platform.OS,
         is_device: Device.isDevice,
       },
+      localizacao_tecnico: coordsStr ? {
+        latitude: techLat,
+        longitude: techLng,
+        coordenadas: coordsStr,
+        link_rastreamento: trackingLinkStr,
+      } : undefined,
     };
 
     console.log(`[Webhook] Enviando notificação '${status}' (Técnico: ${nomeTecnicoFinal}) da O.S. #${osId} para ${WEBHOOK_URL}...`);
@@ -475,6 +495,74 @@ export const sendAttendanceWebhook = async (
     return response.ok;
   } catch (error) {
     console.warn(`[Webhook] Erro ao enviar webhook '${status}':`, error);
+    return false;
+  }
+};
+
+export const LOCATION_TRACKING_WEBHOOK_URL = 'https://n8n.zentos.com.br/webhook/localizacaotecnico';
+
+/**
+ * Envia atualizações periódicas da localização GPS do técnico em tempo real para o n8n
+ * (enquanto a O.S. estiver em execução) para acompanhamento pelo cliente.
+ */
+export const sendTechnicianLocationTrackingWebhook = async (
+  osId: number | string,
+  lat: number,
+  lng: number,
+  chamado?: ChamadoItem
+): Promise<boolean> => {
+  try {
+    const loggedTecnicoName = await getLoggedTecnicoName();
+    const nomeTecnicoFinal = loggedTecnicoName || chamado?.os_tecnico_responsavel || 'Técnico de Campo';
+    const coordsFormatted = `${lat},${lng}`;
+    const linkGmaps = `https://www.google.com/maps?q=${lat},${lng}`;
+    const deviceId = await getRealHardwareDeviceId();
+
+    const payload = {
+      event: 'tecnico_localizacao_tempo_real',
+      os_id: osId,
+      oc_id: chamado?.oc_id || osId,
+      protocolo: chamado?.oc_protocolo || '',
+      tecnico: nomeTecnicoFinal,
+      cliente_id: chamado?.cliente_id,
+      cliente_nome: chamado?.cliente || '',
+      contrato_id: chamado?.contrato_id,
+      latitude: lat,
+      longitude: lng,
+      coordenadas: coordsFormatted,
+      link_rastreamento: linkGmaps,
+      data_atualizacao: new Date().toISOString(),
+      dispositivo_id: deviceId,
+    };
+
+    let response: Response;
+    try {
+      response = await fetch(LOCATION_TRACKING_WEBHOOK_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (response.status === 404) {
+        const testUrl = 'https://n8n.zentos.com.br/webhook-test/localizacaotecnico';
+        response = await fetch(testUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+      }
+    } catch {
+      const testUrl = 'https://n8n.zentos.com.br/webhook-test/localizacaotecnico';
+      response = await fetch(testUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+    }
+
+    return response.ok;
+  } catch (err) {
+    console.warn('[Webhook] Erro ao enviar rastreamento de localização do técnico:', err);
     return false;
   }
 };
