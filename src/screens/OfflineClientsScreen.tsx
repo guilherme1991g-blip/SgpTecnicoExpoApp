@@ -129,9 +129,9 @@ export const OfflineClientsScreen: React.FC<Props> = ({ onBackToOs }) => {
   <div id="map"></div>
   <script>
     var map = L.map('map').setView([${centerLat}, ${centerLng}], 13);
-    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
-      maxZoom: 19,
-      attribution: 'Tiles &copy; Esri'
+    L.tileLayer('https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
+      maxZoom: 20,
+      attribution: '&copy; Google Maps'
     }).addTo(map);
 
     var markersData = ${JSON.stringify(markers)};
