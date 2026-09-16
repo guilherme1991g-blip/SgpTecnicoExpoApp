@@ -68,6 +68,7 @@ export interface AttendanceWebhookPayload {
     cidade?: string;
     uf?: string;
     coordenadas?: string;
+    celular_cliente?: string;
     link_rastreamento?: string;
     link_gmaps?: string;
   };
@@ -466,6 +467,7 @@ export const sendAttendanceWebhook = async (
         cidade: chamado?.endereco_cidade || '',
         uf: chamado?.endereco_uf || '',
         coordenadas: coordsStr || chamado?.contrato_endereco_ll || '',
+        celular_cliente: chamado?.cliente_contato || '',
         link_rastreamento: trackingLinkStr,
         link_gmaps: trackingLinkStr,
       },
@@ -534,14 +536,61 @@ export const sendAttendanceWebhook = async (
 export const LOCATION_TRACKING_WEBHOOK_URL = 'https://n8n.zentos.com.br/webhook/localizacaotecnico';
 
 /**
- * Envia atualizações periódicas da localização GPS do técnico em tempo real para o n8n
+ * Envia / Atualiza a localização no Supabase (tabela rastreamento_tecnico)
+ */
+export const upsertRastreamentoSupabase = async (payload: {
+  os_id: string | number;
+  tecnico: string;
+  latitude: number;
+  longitude: number;
+  cliente_latitude?: number | null;
+  cliente_longitude?: number | null;
+  velocidade?: number | null;
+}): Promise<boolean> => {
+  try {
+    const endpoint = `${SUPABASE_CONFIG.url}/rest/v1/rastreamento_tecnico`;
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'apikey': SUPABASE_CONFIG.key,
+        'Authorization': `Bearer ${SUPABASE_CONFIG.key}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'resolution=merge-duplicates',
+      },
+      body: JSON.stringify({
+        os_id: String(payload.os_id),
+        tecnico: payload.tecnico,
+        latitude: payload.latitude,
+        longitude: payload.longitude,
+        cliente_latitude: payload.cliente_latitude ?? null,
+        cliente_longitude: payload.cliente_longitude ?? null,
+        velocidade: payload.velocidade ?? 0,
+        updated_at: new Date().toISOString(),
+      }),
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      console.warn('[Supabase Rastreamento Error]:', response.status, errText);
+      return false;
+    }
+    return true;
+  } catch (error) {
+    console.warn('[Supabase Rastreamento Exception]:', error);
+    return false;
+  }
+};
+
+/**
+ * Envia atualizações periódicas da localização GPS do técnico em tempo real para o Supabase e n8n
  * (enquanto a O.S. estiver em execução) para acompanhamento pelo cliente.
  */
 export const sendTechnicianLocationTrackingWebhook = async (
   osId: number | string,
   lat: number,
   lng: number,
-  chamado?: ChamadoItem
+  chamado?: ChamadoItem,
+  speedMps?: number | null
 ): Promise<boolean> => {
   try {
     const loggedTecnicoName = await getLoggedTecnicoName();
@@ -550,6 +599,36 @@ export const sendTechnicianLocationTrackingWebhook = async (
     const linkTracking = `https://n8n.zentos.com.br/webhook/rastrear-tecnico?os=${osId}`;
     const deviceId = await getRealHardwareDeviceId();
 
+    // Converte velocidade de m/s para km/h
+    const velocidadeKmh = (speedMps && speedMps > 0) ? Math.round(speedMps * 3.6) : 0;
+
+    // Extrai lat/lng do cliente caso disponível
+    let clientLat: number | null = null;
+    let clientLng: number | null = null;
+    if (chamado?.contrato_endereco_ll) {
+      const parts = chamado.contrato_endereco_ll.split(',');
+      if (parts.length === 2) {
+        const pLat = parseFloat(parts[0].trim());
+        const pLng = parseFloat(parts[1].trim());
+        if (!isNaN(pLat) && !isNaN(pLng)) {
+          clientLat = pLat;
+          clientLng = pLng;
+        }
+      }
+    }
+
+    // 1. Envia / Atualiza em tempo real no Supabase
+    upsertRastreamentoSupabase({
+      os_id: osId,
+      tecnico: nomeTecnicoFinal,
+      latitude: lat,
+      longitude: lng,
+      cliente_latitude: clientLat,
+      cliente_longitude: clientLng,
+      velocidade: velocidadeKmh,
+    }).catch(() => {});
+
+    // 2. Envia para o n8n como backup/legado
     const payload = {
       event: 'tecnico_localizacao_tempo_real',
       os_id: osId,
@@ -593,7 +672,7 @@ export const sendTechnicianLocationTrackingWebhook = async (
       });
     }
 
-    return response.ok;
+    return true;
   } catch (err) {
     console.warn('[Webhook] Erro ao enviar rastreamento de localização do técnico:', err);
     return false;

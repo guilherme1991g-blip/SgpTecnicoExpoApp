@@ -346,8 +346,7 @@ export const OsDetailScreen: React.FC<Props> = ({ chamado, onBack, onCloseOsClic
     let intervalId: any = null;
 
     if (currentOsStatus === 2) {
-      // Configura loop de atualização a cada 20 segundos
-      intervalId = setInterval(async () => {
+      const sendCurrentLocation = async () => {
         try {
           const { status } = await Location.requestForegroundPermissionsAsync();
           if (status === 'granted') {
@@ -356,13 +355,20 @@ export const OsDetailScreen: React.FC<Props> = ({ chamado, onBack, onCloseOsClic
               numericOsId,
               loc.coords.latitude,
               loc.coords.longitude,
-              chamado
+              chamado,
+              loc.coords.speed
             ).catch((err) => console.warn('Erro ao enviar rastreamento em tempo real:', err));
           }
         } catch (err) {
-          console.warn('Erro no loop de rastreamento:', err);
+          console.warn('Erro no rastreamento:', err);
         }
-      }, 20000);
+      };
+
+      // Dispara o primeiro envio IMEDIATAMENTE ao abrir a tela
+      sendCurrentLocation();
+
+      // Configura repetição a cada 20 segundos
+      intervalId = setInterval(sendCurrentLocation, 20000);
     }
 
     return () => {
