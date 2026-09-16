@@ -14,7 +14,9 @@ import {
   Modal,
   KeyboardAvoidingView,
   Linking,
+  Image,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import {
   searchClientesSgp,
@@ -50,6 +52,7 @@ export const CreateOsScreen: React.FC<Props> = ({
   onOpenFinancial,
   onLogout,
 }) => {
+  const insets = useSafeAreaInsets();
   const [loggedUser, setLoggedUser] = useState<string>('Atendente');
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
@@ -534,7 +537,7 @@ export const CreateOsScreen: React.FC<Props> = ({
         </TouchableOpacity>
       </Modal>
 
-      {/* MODAL MENU HAMBÚRGUER COM O NOVO ITEM NO TOPO */}
+      {/* MODAL MENU HAMBÚRGUER (DRAWER LATERAL ESQUERDO MODERNO) */}
       <Modal
         visible={isMenuOpen}
         transparent={true}
@@ -542,36 +545,78 @@ export const CreateOsScreen: React.FC<Props> = ({
         onRequestClose={() => setIsMenuOpen(false)}
       >
         <View style={styles.drawerOverlay}>
-          <View style={styles.drawerContent}>
+          <View
+            style={[
+              styles.drawerContent,
+              {
+                paddingTop: Math.max(insets.top, Platform.OS === 'android' ? (StatusBar.currentHeight || 0) : 20) + 16,
+                paddingBottom: Math.max(insets.bottom, 12) + 6,
+              },
+            ]}
+          >
+            {/* DRAWER TOP HEADER */}
             <View style={styles.drawerHeader}>
-              <View style={styles.drawerHeaderIcon}>
-                <Feather name="shield" size={24} color="#38BDF8" />
+              <View style={styles.drawerBrandRow}>
+                <Image
+                  source={require('../../assets/logo-symbol-white.png')}
+                  style={styles.drawerLogoSymbol}
+                />
+                <View style={{ marginLeft: 10 }}>
+                  <Text style={styles.drawerTitle}>Vega Sync</Text>
+                  <Text style={styles.drawerSubtitle}>Gestão de Campo</Text>
+                </View>
               </View>
-              <View style={{ flex: 1, marginLeft: 12 }}>
-                <Text style={styles.drawerTitle}>SGP Sistema</Text>
-                <Text style={styles.drawerSubtitle}>Menu de Operações</Text>
-              </View>
-              <TouchableOpacity style={styles.closeDrawerBtn} onPress={() => setIsMenuOpen(false)}>
-                <Feather name="x" size={22} color="#94A3B8" />
-              </TouchableOpacity>
-            </View>
 
-            <View style={styles.drawerMenuItems}>
-              {/* ITEM 1 NO TOPO: CRIAR ORDEM DE SERVIÇO */}
               <TouchableOpacity
-                style={[styles.menuItemRow, styles.menuItemRowActive]}
+                style={styles.closeDrawerBtn}
                 onPress={() => setIsMenuOpen(false)}
                 activeOpacity={0.7}
               >
-                <View style={[styles.menuItemIconCircle, { backgroundColor: 'rgba(56, 189, 248, 0.2)' }]}>
-                  <Feather name="plus-circle" size={18} color="#38BDF8" />
+                <Feather name="x" size={20} color="#94A3B8" />
+              </TouchableOpacity>
+            </View>
+
+            {/* TECHNICIAN PROFILE CARD */}
+            <View style={styles.drawerProfileCard}>
+              <View style={styles.drawerAvatarCircle}>
+                <Feather name="user" size={16} color="#818CF8" />
+              </View>
+              <View style={{ flex: 1, marginLeft: 10 }}>
+                <Text style={styles.drawerProfileName} numberOfLines={1}>
+                  {loggedUser || 'Técnico de Campo'}
+                </Text>
+                <View style={styles.drawerStatusRow}>
+                  <View style={styles.drawerStatusDot} />
+                  <Text style={styles.drawerStatusText}>Online • Em Campo</Text>
+                </View>
+              </View>
+            </View>
+
+            {/* DRAWER SCROLLABLE MENU ITEMS */}
+            <ScrollView
+              style={styles.drawerScrollView}
+              contentContainerStyle={styles.drawerScrollContent}
+              showsVerticalScrollIndicator={false}
+            >
+              {/* SECTION: OPERACIONAL */}
+              <Text style={styles.drawerSectionLabel}>OPERACIONAL</Text>
+
+              {/* ITEM 1: CRIAR O.S. (ATIVO) */}
+              <TouchableOpacity
+                style={[styles.menuItemRow, styles.menuItemRowHighlight, styles.menuItemRowActive]}
+                onPress={() => setIsMenuOpen(false)}
+                activeOpacity={0.75}
+              >
+                <View style={[styles.menuItemIconCircle, { backgroundColor: 'rgba(99, 102, 241, 0.2)' }]}>
+                  <Feather name="plus-circle" size={18} color="#818CF8" />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={[styles.menuItemText, { color: '#38BDF8', fontWeight: 'bold' }]}>
-                    Abrir OS
+                  <Text style={[styles.menuItemText, { color: '#818CF8', fontWeight: '700' }]}>
+                    Abrir Nova OS
                   </Text>
-                  <Text style={styles.menuItemSubText}>Abertura rápida de chamados</Text>
+                  <Text style={styles.menuItemSubText}>Abertura rápida de chamado</Text>
                 </View>
+                <Feather name="chevron-right" size={16} color="#818CF8" />
               </TouchableOpacity>
 
               {/* ITEM 2: ORDENS DE SERVIÇO */}
@@ -581,15 +626,16 @@ export const CreateOsScreen: React.FC<Props> = ({
                   setIsMenuOpen(false);
                   onBackToOsList();
                 }}
-                activeOpacity={0.7}
+                activeOpacity={0.75}
               >
-                <View style={styles.menuItemIconCircle}>
-                  <Feather name="file-text" size={18} color="#94A3B8" />
+                <View style={[styles.menuItemIconCircle, { backgroundColor: 'rgba(56, 189, 248, 0.15)' }]}>
+                  <Feather name="calendar" size={18} color="#38BDF8" />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.menuItemText}>Ordens de Serviço</Text>
-                  <Text style={styles.menuItemSubText}>Agenda de chamados em aberto</Text>
+                  <Text style={styles.menuItemSubText}>Agenda de chamados</Text>
                 </View>
+                <Feather name="chevron-right" size={16} color="#475569" />
               </TouchableOpacity>
 
               {/* ITEM 3: BUSCAR CLIENTES */}
@@ -599,15 +645,16 @@ export const CreateOsScreen: React.FC<Props> = ({
                   setIsMenuOpen(false);
                   onOpenClientSearch();
                 }}
-                activeOpacity={0.7}
+                activeOpacity={0.75}
               >
-                <View style={styles.menuItemIconCircle}>
-                  <Feather name="search" size={18} color="#94A3B8" />
+                <View style={[styles.menuItemIconCircle, { backgroundColor: 'rgba(56, 189, 248, 0.12)' }]}>
+                  <Feather name="search" size={18} color="#38BDF8" />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.menuItemText}>Buscar Clientes</Text>
-                  <Text style={styles.menuItemSubText}>Consulta por nome no SGP</Text>
+                  <Text style={styles.menuItemSubText}>Consulta por nome/CPF</Text>
                 </View>
+                <Feather name="chevron-right" size={16} color="#475569" />
               </TouchableOpacity>
 
               {/* ITEM 4: CLIENTES OFFLINE */}
@@ -617,16 +664,20 @@ export const CreateOsScreen: React.FC<Props> = ({
                   setIsMenuOpen(false);
                   onOpenOfflineClients();
                 }}
-                activeOpacity={0.7}
+                activeOpacity={0.75}
               >
-                <View style={styles.menuItemIconCircle}>
+                <View style={[styles.menuItemIconCircle, { backgroundColor: 'rgba(245, 158, 11, 0.15)' }]}>
                   <Feather name="wifi-off" size={18} color="#F59E0B" />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.menuItemText}>Clientes Offline</Text>
-                  <Text style={styles.menuItemSubText}>Filtro por bairro, Ativo vs Suspenso</Text>
+                  <Text style={styles.menuItemSubText}>Mapa e lista por bairro</Text>
                 </View>
+                <Feather name="chevron-right" size={16} color="#475569" />
               </TouchableOpacity>
+
+              {/* SECTION: REDE & FIBRA */}
+              <Text style={styles.drawerSectionLabel}>REDE & FIBRA GPON</Text>
 
               {/* ITEM 5: AUTORIZAR ONU */}
               <TouchableOpacity
@@ -635,34 +686,39 @@ export const CreateOsScreen: React.FC<Props> = ({
                   setIsMenuOpen(false);
                   onOpenAuthorizeOnu();
                 }}
-                activeOpacity={0.7}
+                activeOpacity={0.75}
               >
-                <View style={styles.menuItemIconCircle}>
-                  <Feather name="key" size={18} color="#94A3B8" />
+                <View style={[styles.menuItemIconCircle, { backgroundColor: 'rgba(16, 185, 129, 0.15)' }]}>
+                  <Feather name="cpu" size={18} color="#10B981" />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.menuItemText}>Autorizar ONU</Text>
-                  <Text style={styles.menuItemSubText}>Provisionamento em OLT</Text>
+                  <Text style={styles.menuItemSubText}>Provisionamento na OLT</Text>
                 </View>
+                <Feather name="chevron-right" size={16} color="#475569" />
               </TouchableOpacity>
 
-              {/* ITEM 6: CONSULTAR OLT */}
+              {/* ITEM 6: CONSULTA DE ONU / OLT */}
               <TouchableOpacity
                 style={styles.menuItemRow}
                 onPress={() => {
                   setIsMenuOpen(false);
                   onOpenOltConsultation();
                 }}
-                activeOpacity={0.7}
+                activeOpacity={0.75}
               >
-                <View style={styles.menuItemIconCircle}>
-                  <Feather name="cpu" size={18} color="#94A3B8" />
+                <View style={[styles.menuItemIconCircle, { backgroundColor: 'rgba(56, 189, 248, 0.15)' }]}>
+                  <Feather name="server" size={18} color="#38BDF8" />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.menuItemText}>Consultar OLT</Text>
-                  <Text style={styles.menuItemSubText}>Status de placas e portas PON</Text>
+                  <Text style={styles.menuItemText}>Consulta de ONU</Text>
+                  <Text style={styles.menuItemSubText}>Listar OLTs e portas PON</Text>
                 </View>
+                <Feather name="chevron-right" size={16} color="#475569" />
               </TouchableOpacity>
+
+              {/* SECTION: GESTÃO */}
+              <Text style={styles.drawerSectionLabel}>GESTÃO & DESPESAS</Text>
 
               {/* ITEM 7: FINANCEIRO */}
               <TouchableOpacity
@@ -671,23 +727,41 @@ export const CreateOsScreen: React.FC<Props> = ({
                   setIsMenuOpen(false);
                   if (onOpenFinancial) onOpenFinancial();
                 }}
-                activeOpacity={0.7}
+                activeOpacity={0.75}
               >
-                <View style={styles.menuItemIconCircle}>
+                <View style={[styles.menuItemIconCircle, { backgroundColor: 'rgba(16, 185, 129, 0.15)' }]}>
                   <Feather name="dollar-sign" size={18} color="#10B981" />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.menuItemText}>Financeiro</Text>
-                  <Text style={styles.menuItemSubText}>Módulo Administrativo</Text>
+                  <Text style={styles.menuItemSubText}>Despesas e abastecimento</Text>
                 </View>
+                <Feather name="chevron-right" size={16} color="#475569" />
               </TouchableOpacity>
-            </View>
+            </ScrollView>
 
-            <TouchableOpacity style={styles.logoutBtn} onPress={onLogout} activeOpacity={0.8}>
-              <Feather name="log-out" size={18} color="#EF4444" style={{ marginRight: 8 }} />
-              <Text style={styles.logoutBtnText}>Sair da Conta</Text>
-            </TouchableOpacity>
+            {/* DRAWER FOOTER (LOGOUT & VERSION) */}
+            <View style={styles.drawerFooter}>
+              <TouchableOpacity
+                style={styles.logoutMenuItemBtn}
+                onPress={() => {
+                  setIsMenuOpen(false);
+                  onLogout();
+                }}
+                activeOpacity={0.8}
+              >
+                <Feather name="log-out" size={16} color="#EF4444" />
+                <Text style={styles.logoutMenuItemText}>Sair da Conta</Text>
+              </TouchableOpacity>
+              <Text style={styles.drawerVersionText}>Vega Sync • v1.0.0</Text>
+            </View>
           </View>
+
+          <TouchableOpacity
+            style={styles.drawerBackdrop}
+            onPress={() => setIsMenuOpen(false)}
+            activeOpacity={1}
+          />
         </View>
       </Modal>
     </SafeAreaView>
@@ -1075,84 +1149,181 @@ const styles = StyleSheet.create({
 
   drawerOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    flexDirection: 'row',
+  },
+  drawerBackdrop: {
+    flex: 1,
   },
   drawerContent: {
-    width: 280,
+    width: 295,
+    backgroundColor: '#080C14',
     height: '100%',
-    backgroundColor: '#0F172A',
-    padding: 20,
+    paddingHorizontal: 16,
+    borderRightWidth: 1,
+    borderRightColor: '#1E293B',
+    justifyContent: 'space-between',
   },
   drawerHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 24,
+    justifyContent: 'space-between',
+    paddingBottom: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1E293B',
   },
-  drawerHeaderIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(56, 189, 248, 0.1)',
-    justifyContent: 'center',
+  drawerBrandRow: {
+    flexDirection: 'row',
     alignItems: 'center',
+  },
+  drawerLogoSymbol: {
+    width: 32,
+    height: 32,
+    resizeMode: 'contain',
   },
   drawerTitle: {
     color: '#F8FAFC',
-    fontSize: 16,
-    fontWeight: 'bold',
+    fontSize: 17,
+    fontWeight: '800',
+    letterSpacing: 0.4,
   },
   drawerSubtitle: {
-    color: '#64748B',
-    fontSize: 12,
+    color: '#818CF8',
+    fontSize: 11,
+    fontWeight: '600',
+    marginTop: 1,
   },
   closeDrawerBtn: {
-    padding: 4,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#1E293B',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  drawerMenuItems: {
+  drawerProfileCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#0F172A',
+    borderRadius: 12,
+    padding: 10,
+    marginTop: 12,
+    marginBottom: 6,
+    borderWidth: 1,
+    borderColor: '#1E293B',
+  },
+  drawerAvatarCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(99, 102, 241, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(99, 102, 241, 0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  drawerProfileName: {
+    color: '#F8FAFC',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  drawerStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 3,
+  },
+  drawerStatusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#10B981',
+    marginRight: 6,
+  },
+  drawerStatusText: {
+    color: '#94A3B8',
+    fontSize: 11,
+    fontWeight: '500',
+  },
+  drawerScrollView: {
     flex: 1,
+  },
+  drawerScrollContent: {
+    paddingBottom: 16,
+  },
+  drawerSectionLabel: {
+    color: '#64748B',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1.0,
+    marginTop: 14,
+    marginBottom: 8,
+    marginLeft: 4,
   },
   menuItemRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 8,
-    borderRadius: 10,
-    marginBottom: 6,
+    backgroundColor: '#111827',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#1E293B',
   },
   menuItemRowActive: {
-    backgroundColor: 'rgba(56, 189, 248, 0.1)',
+    backgroundColor: 'rgba(99, 102, 241, 0.08)',
+    borderColor: 'rgba(99, 102, 241, 0.35)',
+  },
+  menuItemRowHighlight: {
+    backgroundColor: 'rgba(99, 102, 241, 0.08)',
+    borderColor: 'rgba(99, 102, 241, 0.35)',
   },
   menuItemIconCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#0B0F17',
+    width: 34,
+    height: 34,
+    borderRadius: 9,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
+    marginRight: 10,
   },
   menuItemText: {
     color: '#F8FAFC',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
   },
   menuItemSubText: {
     color: '#64748B',
-    fontSize: 11,
+    fontSize: 10.5,
+    marginTop: 1.5,
   },
-  logoutBtn: {
+  drawerFooter: {
+    paddingTop: 12,
+    paddingBottom: Platform.OS === 'ios' ? 24 : 14,
+    borderTopWidth: 1,
+    borderTopColor: '#1E293B',
+    alignItems: 'center',
+  },
+  logoutMenuItemBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
     backgroundColor: 'rgba(239, 68, 68, 0.1)',
     borderRadius: 10,
+    paddingVertical: 10,
+    width: '100%',
     borderWidth: 1,
-    borderColor: 'rgba(239, 68, 68, 0.2)',
+    borderColor: 'rgba(239, 68, 68, 0.25)',
+    marginBottom: 8,
   },
-  logoutBtnText: {
+  logoutMenuItemText: {
     color: '#EF4444',
+    fontWeight: '700',
     fontSize: 13,
-    fontWeight: 'bold',
+    marginLeft: 6,
+  },
+  drawerVersionText: {
+    color: '#475569',
+    fontSize: 10.5,
+    fontWeight: '500',
   },
 });
