@@ -38,6 +38,8 @@ export interface AttendanceWebhookPayload {
   tecnico?: string;
   dispositivo_id?: string;
   data_evento: string;
+  link_rastreamento?: string;
+  link_gmaps?: string;
   dados_ocorrencia: {
     os_id: number | string;
     oc_id?: number | string;
@@ -49,6 +51,8 @@ export interface AttendanceWebhookPayload {
     data_agendamento?: string;
     data_cadastro?: string;
     tecnico?: string;
+    link_rastreamento?: string;
+    link_gmaps?: string;
   };
   dados_contrato: {
     cliente_id?: number | string;
@@ -64,6 +68,8 @@ export interface AttendanceWebhookPayload {
     cidade?: string;
     uf?: string;
     coordenadas?: string;
+    link_rastreamento?: string;
+    link_gmaps?: string;
   };
   dados_celular: {
     dispositivo_id?: string;
@@ -80,6 +86,7 @@ export interface AttendanceWebhookPayload {
     longitude?: number;
     coordenadas?: string;
     link_rastreamento?: string;
+    link_gmaps?: string;
   };
 }
 
@@ -411,6 +418,8 @@ export const sendAttendanceWebhook = async (
       tecnico: nomeTecnicoFinal,
       dispositivo_id: deviceId,
       data_evento: new Date().toISOString(),
+      link_rastreamento: trackingLinkStr,
+      link_gmaps: trackingLinkStr,
       dados_ocorrencia: {
         os_id: osId,
         oc_id: chamado?.oc_id || osId,
@@ -422,6 +431,8 @@ export const sendAttendanceWebhook = async (
         data_agendamento: chamado?.os_data_agendamento || '',
         data_cadastro: chamado?.oc_data_cadastro || chamado?.os_data_cadastro || '',
         tecnico: nomeTecnicoFinal,
+        link_rastreamento: trackingLinkStr,
+        link_gmaps: trackingLinkStr,
       },
       dados_contrato: {
         cliente_id: chamado?.cliente_id,
@@ -437,6 +448,8 @@ export const sendAttendanceWebhook = async (
         cidade: chamado?.endereco_cidade || '',
         uf: chamado?.endereco_uf || '',
         coordenadas: coordsStr || chamado?.contrato_endereco_ll || '',
+        link_rastreamento: trackingLinkStr,
+        link_gmaps: trackingLinkStr,
       },
       dados_celular: {
         dispositivo_id: deviceId,
@@ -448,12 +461,13 @@ export const sendAttendanceWebhook = async (
         plataforma: Platform.OS,
         is_device: Device.isDevice,
       },
-      localizacao_tecnico: coordsStr ? {
+      localizacao_tecnico: {
         latitude: techLat,
         longitude: techLng,
         coordenadas: coordsStr,
         link_rastreamento: trackingLinkStr,
-      } : undefined,
+        link_gmaps: trackingLinkStr,
+      },
     };
 
     console.log(`[Webhook] Enviando notificação '${status}' (Técnico: ${nomeTecnicoFinal}) da O.S. #${osId} para ${WEBHOOK_URL}...`);
