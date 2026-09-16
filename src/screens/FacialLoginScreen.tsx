@@ -288,6 +288,11 @@ export const FacialLoginScreen: React.FC<Props> = ({ onLoginSuccess }) => {
                 },
               ]}
             >
+              {/* LABEL EXTERNO */}
+              <View style={styles.inputLabelContainer}>
+                <Text style={styles.inputLabelText}>Digite o código</Text>
+              </View>
+
               {/* CAMPO DE ENTRADA NUMÉRICA */}
               <View
                 style={[
@@ -303,7 +308,7 @@ export const FacialLoginScreen: React.FC<Props> = ({ onLoginSuccess }) => {
                     setNumericCode(text);
                     setStatusMsg(null);
                   }}
-                  placeholder="Digite seu código de acesso..."
+                  placeholder="Ex: 123456"
                   placeholderTextColor="#475569"
                   keyboardType="number-pad"
                   maxLength={10}
@@ -464,6 +469,17 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 360,
     alignItems: 'center',
+  },
+  inputLabelContainer: {
+    width: '100%',
+    marginBottom: 8,
+    paddingHorizontal: 4,
+  },
+  inputLabelText: {
+    color: '#94A3B8',
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0.5,
   },
   inputWrapper: {
     flexDirection: 'row',
