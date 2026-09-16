@@ -20,7 +20,7 @@
         "simulator": false
       },
       "android": {
-        "buildType": "apk"
+        "buildType": "app-bundle"
       }
     }
   },
@@ -28,6 +28,9 @@
     "production": {
       "ios": {
         "ascAppId": "6807418518"
+      },
+      "android": {
+        "track": "internal"
       }
     }
   }
