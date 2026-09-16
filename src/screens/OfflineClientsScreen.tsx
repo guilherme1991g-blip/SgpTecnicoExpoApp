@@ -92,20 +92,20 @@ export const OfflineClientsScreen: React.FC<Props> = ({ onBackToOs }) => {
   // Gera o HTML do mapa Leaflet interativo com pinos vermelhos para cada cliente offline
   const generateMapHtml = useMemo(() => {
     const markers = filteredList
-      .filter((item) => item.latitude !== undefined && item.longitude !== undefined)
+      .filter((item) => item.hasExactCoords && item.latitude !== undefined && item.longitude !== undefined)
       .map((item) => ({
         id: item.servico_id || item.nome,
         nome: (item.nome || 'Cliente SGP').replace(/'/g, "\\'"),
         status: (item.statusContrato || 'Ativo').toUpperCase().replace(/'/g, "\\'"),
         endereco: (item.endereco_logradouro || item.endereco_bairro || item.bairroCanonico || '').replace(/'/g, "\\'"),
         login: (item.pppoe_login || '').replace(/'/g, "\\'"),
-        lat: item.latitude,
-        lng: item.longitude,
-        exact: item.hasExactCoords ? 'SGP Coordenadas Exatas' : 'Região Bairro',
+        lat: item.latitude!,
+        lng: item.longitude!,
+        exact: 'Coordenadas Cadastradas SGP',
       }));
 
-    const centerLat = markers.length > 0 ? markers[0].lat : -8.2435;
-    const centerLng = markers.length > 0 ? markers[0].lng : -35.4590;
+    const centerLat = markers.length > 0 ? markers[0].lat : -7.8771171;
+    const centerLng = markers.length > 0 ? markers[0].lng : -35.8609273;
 
     return `
 <!DOCTYPE html>
@@ -242,6 +242,18 @@ export const OfflineClientsScreen: React.FC<Props> = ({ onBackToOs }) => {
               <Text style={styles.detailTagText} numberOfLines={1}>{item.plano}</Text>
             </View>
           ) : null}
+
+          {item.hasExactCoords ? (
+            <View style={[styles.detailTag, { backgroundColor: 'rgba(16, 185, 129, 0.15)' }]}>
+              <Feather name="map-pin" size={11} color="#10B981" />
+              <Text style={[styles.detailTagText, { color: '#10B981' }]}>No Mapa</Text>
+            </View>
+          ) : (
+            <View style={[styles.detailTag, { backgroundColor: 'rgba(148, 163, 184, 0.12)' }]}>
+              <Feather name="map-pin" size={11} color="#64748B" />
+              <Text style={[styles.detailTagText, { color: '#64748B' }]}>Sem GPS (Apenas Lista)</Text>
+            </View>
+          )}
         </View>
       </View>
     );

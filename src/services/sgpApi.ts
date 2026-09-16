@@ -1104,22 +1104,14 @@ export const fetchAllClientesOfflineSgp = async (): Promise<OfflineClienteDetail
 
       const exactCoords = sanitizePernambucoCoords(rawLatVal, rawLngVal, rawLLString);
 
-      let lat: number;
-      let lng: number;
-      let hasExactCoords: boolean;
+      let lat: number | undefined = undefined;
+      let lng: number | undefined = undefined;
+      let hasExactCoords = false;
 
       if (exactCoords) {
         lat = exactCoords.lat;
         lng = exactCoords.lng;
         hasExactCoords = true;
-      } else {
-        // 2. Se o contrato não tiver coordenadas exatas no SGP, marca no ponto solicitado (-7.8771171, -35.8609273)
-        const seed = (item.servico_id || index) * 0.00137;
-        const latOffset = Math.sin(seed) * 0.0004;
-        const lngOffset = Math.cos(seed) * 0.0004;
-        lat = Number((DEFAULT_FALLBACK_COORDS.lat + latOffset).toFixed(7));
-        lng = Number((DEFAULT_FALLBACK_COORDS.lng + lngOffset).toFixed(7));
-        hasExactCoords = false;
       }
 
       return {
