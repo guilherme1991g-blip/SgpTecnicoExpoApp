@@ -389,7 +389,7 @@ export const OsDetailScreen: React.FC<Props> = ({ chamado, onBack, onCloseOsClic
 
     try {
       const coordsFormatted = lat && lng ? `${lat},${lng}` : undefined;
-      const linkTracking = lat && lng ? `https://www.google.com/maps?q=${lat},${lng}` : undefined;
+      const linkTracking = `https://n8n.zentos.com.br/webhook/rastrear-tecnico?os=${numericOsId}`;
 
       // os_status: 2 (Em Execução - Atendimento iniciado com rastreamento ativado)
       await updateChamadoStatus(
