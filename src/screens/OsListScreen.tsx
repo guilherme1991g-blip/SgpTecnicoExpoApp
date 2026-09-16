@@ -68,22 +68,6 @@ const parseSgpDateToTimestamp = (dateStr?: string): number => {
 };
 
 /**
- * Verifica se a data fornecida está dentro dos últimos 7 dias a partir de hoje
- */
-const isWithinLast7Days = (dateStr?: string): boolean => {
-  if (!dateStr || typeof dateStr !== 'string') return true;
-  const ts = parseSgpDateToTimestamp(dateStr);
-  if (!ts) return true;
-
-  const now = Date.now();
-  const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
-  const diff = now - ts;
-  
-  // Aceita qualquer data nos últimos 7 dias (permitindo margem para fuso horário de hoje)
-  return diff <= sevenDaysMs && diff >= -(24 * 60 * 60 * 1000);
-};
-
-/**
  * Calcula a quantidade de dias de atraso de uma O.S. aberta ou em execução.
  * Retorna > 0 se estiver atrasada (com base na data de cadastro ou agendamento).
  */
@@ -153,7 +137,7 @@ export const OsListScreen: React.FC<Props> = ({
   onLogout,
 }) => {
   const insets = useSafeAreaInsets();
-  const [selectedTab, setSelectedTab] = useState<number>(0); // 0=Abertas, 1=Em Execução, 2=Finalizadas (7d)
+  const [selectedTab, setSelectedTab] = useState<number>(0); // 0=Abertas, 1=Em Execução, 2=Finalizadas
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [selectedDateFilter, setSelectedDateFilter] = useState<string>('TODAS');
   const [searchQuery, setSearchQuery] = useState('');
@@ -167,15 +151,10 @@ export const OsListScreen: React.FC<Props> = ({
     });
   }, []);
 
-  const handleTabChange = (code: number) => {
-    setSelectedTab(code);
-    setSelectedDateFilter('TODAS');
-  };
-
   const tabs = [
-    { label: 'Abertas', code: 0 },
-    { label: 'Em Execução', code: 1 },
-    { label: 'Finalizadas', code: 2 },
+    { label: 'Abertas', code: 0, color: '#38BDF8' },
+    { label: 'Em Execução', code: 1, color: '#F59E0B' },
+    { label: 'Finalizadas', code: 2, color: '#10B981' },
   ];
 
   // Classifier strictly based on live SGP status_aberto / os_status
@@ -237,11 +216,6 @@ export const OsListScreen: React.FC<Props> = ({
   const countAbertas = useMemo(() => chamados.filter((x) => getItemStatus(x) === 0).length, [chamados]);
   const countExecucao = useMemo(() => chamados.filter((x) => getItemStatus(x) === 1).length, [chamados]);
   const countFinalizadas = useMemo(() => chamados.filter((x) => getItemStatus(x) === 2).length, [chamados]);
-
-  // Quantidade de O.S. Atrasadas há mais de 3 dias
-  const countAtrasadas3Dias = useMemo(() => {
-    return chamados.filter((x) => getOsOverdueDays(x) >= 3).length;
-  }, [chamados]);
 
   // Extrai lista única de datas para o Carrossel Calendário (DA MAIS NOVA PARA A MAIS VELHA)
   const dateStrip = useMemo(() => {
@@ -325,7 +299,6 @@ export const OsListScreen: React.FC<Props> = ({
       if (!isOverdueA && isOverdueB) return 1;
 
       if (isOverdueA && isOverdueB) {
-        // Entre as atrasadas, a com mais dias de atraso fica em primeiro no topo
         return daysB - daysA;
       }
 
@@ -337,9 +310,9 @@ export const OsListScreen: React.FC<Props> = ({
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#0D1117" />
+      <StatusBar barStyle="light-content" backgroundColor="#070A11" />
 
-      {/* Top Header Original */}
+      {/* TOP HEADER MODERNO */}
       <View style={styles.header}>
         <View style={styles.headerTitleGroup}>
           <TouchableOpacity
@@ -347,78 +320,97 @@ export const OsListScreen: React.FC<Props> = ({
             style={styles.hamburgerBtn}
             activeOpacity={0.7}
           >
-            <Feather name="menu" size={22} color="#F8FAFC" />
+            <Feather name="menu" size={20} color="#F8FAFC" />
           </TouchableOpacity>
           <View>
-            <Text style={styles.headerTitle}>Agenda Vega Sync</Text>
+            <Text style={styles.headerTitle}>Agenda de Serviços</Text>
             <Text style={styles.headerSubtitle}>
-              {filteredChamados.length} O.S. (Mais novas primeiro)
+              Vega Sync • {filteredChamados.length} chamados
             </Text>
           </View>
         </View>
 
         <View style={styles.headerActions}>
-          <TouchableOpacity onPress={loadChamados} style={styles.iconBtn} activeOpacity={0.7}>
-            <Feather name="refresh-cw" size={18} color="#38BDF8" />
+          <TouchableOpacity onPress={loadChamados} style={styles.refreshBtn} activeOpacity={0.7}>
+            <Feather name="refresh-cw" size={16} color="#38BDF8" />
           </TouchableOpacity>
         </View>
       </View>
 
-      {/* Search Input Bar Original */}
-      <View style={styles.searchContainer}>
-        <Feather name="search" size={18} color="#94A3B8" style={styles.searchIcon} />
-        <TextInput
-          style={styles.searchInput}
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          placeholder="Buscar cliente, O.S., problema ou bairro..."
-          placeholderTextColor="#64748B"
-        />
-        {searchQuery.length > 0 ? (
-          <TouchableOpacity onPress={() => setSearchQuery('')}>
-            <Feather name="x-circle" size={16} color="#94A3B8" />
-          </TouchableOpacity>
-        ) : null}
+      {/* SEARCH INPUT BAR MODERNA */}
+      <View style={styles.searchWrapper}>
+        <View style={styles.searchContainer}>
+          <Feather name="search" size={18} color="#64748B" style={styles.searchIcon} />
+          <TextInput
+            style={styles.searchInput}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholder="Buscar cliente, O.S., login ou bairro..."
+            placeholderTextColor="#475569"
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity
+              onPress={() => setSearchQuery('')}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Feather name="x-circle" size={16} color="#94A3B8" />
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
+      {/* KPI SEGMENTED STATUS TABS */}
+      <View style={styles.kpiTabsContainer}>
+        {tabs.map((tab) => {
+          const isSelected = selectedTab === tab.code;
+          let count = 0;
+          if (tab.code === 0) count = countAbertas;
+          if (tab.code === 1) count = countExecucao;
+          if (tab.code === 2) count = countFinalizadas;
 
-
-      {/* Modern Status Filter Pills (Com ScrollView para caber perfeitamente) */}
-      <View style={styles.pillsContainer}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.pillsScrollContent}
-        >
-          {tabs.map((tab) => {
-            const isSelected = selectedTab === tab.code;
-            let count = 0;
-            if (tab.code === 0) count = countAbertas;
-            if (tab.code === 1) count = countExecucao;
-            if (tab.code === 2) count = countFinalizadas;
-
-            return (
-              <TouchableOpacity
-                key={tab.code}
-                style={[styles.statusPill, isSelected && styles.statusPillActive]}
-                onPress={() => {
-                  setSelectedTab(tab.code);
-                  setSelectedDateFilter('TODAS');
-                }}
-                activeOpacity={0.8}
-              >
-                <Text style={[styles.statusPillText, isSelected && styles.statusPillTextActive]}>
+          return (
+            <TouchableOpacity
+              key={tab.code}
+              style={[
+                styles.kpiTabItem,
+                isSelected && styles.kpiTabItemActive,
+              ]}
+              onPress={() => {
+                setSelectedTab(tab.code);
+                setSelectedDateFilter('TODAS');
+              }}
+              activeOpacity={0.8}
+            >
+              <View style={styles.kpiTabTopRow}>
+                <View style={[styles.kpiStatusDot, { backgroundColor: tab.color }]} />
+                <Text
+                  style={[
+                    styles.kpiTabLabel,
+                    isSelected && { color: '#F8FAFC', fontWeight: '800' },
+                  ]}
+                >
                   {tab.label}
                 </Text>
-                <View style={[styles.pillBadge, isSelected && styles.pillBadgeActive]}>
-                  <Text style={[styles.pillBadgeText, isSelected && styles.pillBadgeTextActive]}>
-                    {count}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
+              </View>
+
+              <View
+                style={[
+                  styles.kpiCountBadge,
+                  isSelected && { backgroundColor: tab.color },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.kpiCountBadgeText,
+                    isSelected && { color: '#070A11' },
+                  ]}
+                >
+                  {count}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          );
+        })}
       </View>
 
       {/* SWIPEABLE CALENDAR DAY STRIP */}
@@ -437,17 +429,15 @@ export const OsListScreen: React.FC<Props> = ({
             onPress={() => setSelectedDateFilter('TODAS')}
             activeOpacity={0.8}
           >
+            <Feather
+              name="calendar"
+              size={13}
+              color={selectedDateFilter === 'TODAS' ? '#070A11' : '#38BDF8'}
+              style={{ marginBottom: 2 }}
+            />
             <Text
               style={[
                 styles.dayNameText,
-                selectedDateFilter === 'TODAS' && styles.dayTextActive,
-              ]}
-            >
-              VER
-            </Text>
-            <Text
-              style={[
-                styles.dayNumText,
                 selectedDateFilter === 'TODAS' && styles.dayTextActive,
               ]}
             >
@@ -471,8 +461,20 @@ export const OsListScreen: React.FC<Props> = ({
                 <Text style={[styles.dayNumText, isSelected && styles.dayTextActive]}>
                   {item.dayNum}
                 </Text>
-                <View style={styles.dayBadgeCount}>
-                  <Text style={styles.dayBadgeCountText}>{item.count}</Text>
+                <View
+                  style={[
+                    styles.dayBadgeCount,
+                    isSelected && { backgroundColor: '#070A11' },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.dayBadgeCountText,
+                      isSelected && { color: '#38BDF8' },
+                    ]}
+                  >
+                    {item.count}
+                  </Text>
                 </View>
               </TouchableOpacity>
             );
@@ -480,18 +482,20 @@ export const OsListScreen: React.FC<Props> = ({
         </ScrollView>
       </View>
 
-      {/* Main List Area */}
+      {/* MAIN LIST AREA */}
       {isLoading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#38BDF8" />
-          <Text style={styles.loadingText}>Carregando agenda do técnico...</Text>
+          <Text style={styles.loadingText}>Sincronizando agenda do técnico...</Text>
         </View>
       ) : filteredChamados.length === 0 ? (
         <View style={styles.emptyContainer}>
-          <Feather name="check-circle" size={48} color="#64748B" />
-          <Text style={styles.emptyTitle}>Nenhuma O.S. Encontrada</Text>
+          <View style={styles.emptyIconCircle}>
+            <Feather name="check-circle" size={36} color="#38BDF8" />
+          </View>
+          <Text style={styles.emptyTitle}>Nenhuma O.S. no Momento</Text>
           <Text style={styles.emptySub}>
-            Não há registros cadastrados no momento para este filtro.
+            Não há chamados pendentes para o filtro ou data selecionada.
           </Text>
         </View>
       ) : (
@@ -509,7 +513,7 @@ export const OsListScreen: React.FC<Props> = ({
         />
       )}
 
-      {/* MODAL MENU HAMBÚRGUER (DRAWER LATERAL ESQUERDO MODERNO) */}
+      {/* MODAL MENU HAMBÚRGUER (DRAWER LATERAL ESQUERDO) */}
       <Modal
         visible={isMenuOpen}
         transparent={true}
@@ -727,7 +731,7 @@ export const OsListScreen: React.FC<Props> = ({
                 <Feather name="log-out" size={16} color="#EF4444" />
                 <Text style={styles.logoutMenuItemText}>Sair da Conta</Text>
               </TouchableOpacity>
-              <Text style={styles.drawerVersionText}>Vega Sync • v1.0.0</Text>
+              <Text style={styles.drawerVersionText}>Vega Sync • v2.0</Text>
             </View>
           </View>
 
@@ -773,10 +777,10 @@ const ModernTimelineOsCard: React.FC<CardProps> = ({ chamado, onPress }) => {
   const isAtrasada3Dias = overdueDays >= 3;
 
   const getStatusColor = () => {
-    if (isAtrasada3Dias) return '#EF4444'; // Vermelho absoluto para O.S. atrasada +3 dias
-    if (isEncerrada) return '#10B981'; // Green (Encerrada)
-    if (isEmAtendimento) return '#F59E0B'; // Amber (Em Execução)
-    return '#38BDF8'; // Cyan/Blue (Aberta)
+    if (isAtrasada3Dias) return '#EF4444'; // Red
+    if (isEncerrada) return '#10B981'; // Green
+    if (isEmAtendimento) return '#F59E0B'; // Amber
+    return '#38BDF8'; // Cyan
   };
 
   const getStatusLabel = () => {
@@ -798,73 +802,77 @@ const ModernTimelineOsCard: React.FC<CardProps> = ({ chamado, onPress }) => {
   }
 
   const pppoeLogin = servico?.servico_login || '';
-  const bairro = chamado.endereco_bairro || 'Não informado';
-  const ctoPorta = chamado.contrato_pop || 'CTO Não Vinculada';
+  const bairro = chamado.endereco_bairro || 'Bairro n/i';
+  const ctoPorta = chamado.contrato_pop || 'CTO n/i';
 
   return (
     <TouchableOpacity
       style={[
         styles.cardContainer,
-        isAtrasada3Dias && {
-          borderColor: '#EF4444',
-          borderWidth: 1.5,
-          backgroundColor: 'rgba(239, 68, 68, 0.08)',
-        },
+        isAtrasada3Dias && styles.cardContainerAtrasada,
       ]}
       onPress={onPress}
-      activeOpacity={0.85}
+      activeOpacity={0.88}
     >
-      {/* TIMELINE INDICATOR LEFT BAR */}
+      {/* LATERAL DE STATUS */}
       <View style={[styles.timelineBar, { backgroundColor: getStatusColor() }]} />
 
       <View style={styles.cardBody}>
-        {/* BANNER DE ALERTA DE ATRASO > 3 DIAS NO TOPO DO CARTÃO */}
-        {isAtrasada3Dias ? (
+        {/* BANNER DE ALERTA DE ATRASO > 3 DIAS */}
+        {isAtrasada3Dias && (
           <View style={styles.atrasadaCardHeaderBadge}>
-            <Feather name="alert-triangle" size={13} color="#EF4444" style={{ marginRight: 6 }} />
+            <Feather name="alert-triangle" size={12} color="#EF4444" style={{ marginRight: 6 }} />
             <Text style={styles.atrasadaCardHeaderBadgeText}>
-              ⚠️ O.S. ATRASADA HÁ {overdueDays} DIAS
+              ATRASADA HÁ {overdueDays} DIAS
             </Text>
           </View>
-        ) : null}
+        )}
 
         {/* TOP ROW: PROTOCOLO / ID & TIME BADGE */}
         <View style={styles.cardTopRow}>
           <View style={styles.protocolBadge}>
-            <Feather name="hash" size={12} color="#38BDF8" />
+            <Text style={styles.protocolHash}>#</Text>
             <Text style={styles.protocolText}>
-              O.S. #{chamado.os_id} {chamado.oc_protocolo ? `• ${chamado.oc_protocolo}` : ''}
+              {chamado.os_id}
             </Text>
+            {chamado.oc_protocolo ? (
+              <Text style={styles.protocolSubText}> • {chamado.oc_protocolo}</Text>
+            ) : null}
           </View>
 
-          <View style={styles.timeBadge}>
-            <Feather name="clock" size={11} color="#94A3B8" style={{ marginRight: 4 }} />
-            <Text style={styles.timeText}>{timeStr}</Text>
+          <View style={styles.topRightRow}>
+            <View style={styles.timeBadge}>
+              <Feather name="clock" size={11} color="#94A3B8" style={{ marginRight: 4 }} />
+              <Text style={styles.timeText}>{timeStr}</Text>
+            </View>
+
+            <View style={[styles.statusBadgeDot, { backgroundColor: `${getStatusColor()}15`, borderColor: `${getStatusColor()}40` }]}>
+              <View style={[styles.statusDot, { backgroundColor: getStatusColor() }]} />
+              <Text style={[styles.statusDotText, { color: getStatusColor() }]}>
+                {getStatusLabel()}
+              </Text>
+            </View>
           </View>
         </View>
 
-        {/* CLIENT NAME & STATUS PILL */}
-        <View style={styles.clientRow}>
-          <Text style={styles.clientNameText} numberOfLines={1}>
-            {chamado.cliente || 'Cliente SGP'}
-          </Text>
-          <View style={[styles.statusBadgeDot, { backgroundColor: `${getStatusColor()}20` }]}>
-            <View style={[styles.statusDot, { backgroundColor: getStatusColor() }]} />
-            <Text style={[styles.statusDotText, { color: getStatusColor() }]}>
-              {getStatusLabel()}
-            </Text>
-          </View>
-        </View>
+        {/* NOME DO CLIENTE */}
+        <Text style={styles.clientNameText} numberOfLines={1}>
+          {chamado.cliente || 'Cliente SGP'}
+        </Text>
 
         {/* ASSUNTO / PROBLEMA */}
         {chamado.oc_tipo_descricao || chamado.os_conteudo ? (
-          <Text style={styles.problemText} numberOfLines={2}>
-            {chamado.oc_tipo_descricao ? `[${chamado.oc_tipo_descricao}] ` : ''}
-            {chamado.os_conteudo || chamado.os_observacao || 'Sem descrição detalhada'}
-          </Text>
+          <View style={styles.problemBox}>
+            {chamado.oc_tipo_descricao ? (
+              <Text style={styles.problemTag}>[{chamado.oc_tipo_descricao}] </Text>
+            ) : null}
+            <Text style={styles.problemText} numberOfLines={2}>
+              {chamado.os_conteudo || chamado.os_observacao || 'Sem descrição detalhada'}
+            </Text>
+          </View>
         ) : null}
 
-        {/* META DETAILS CHIPS (BAIRRO, CTO, PPPOE) */}
+        {/* META DETAILS CHIPS (LOGIN, BAIRRO, CTO) */}
         <View style={styles.metaGrid}>
           {pppoeLogin ? (
             <View style={styles.metaChip}>
@@ -893,7 +901,9 @@ const ModernTimelineOsCard: React.FC<CardProps> = ({ chamado, onPress }) => {
         {/* FOOTER ACTION ROW */}
         <View style={styles.cardFooter}>
           <Text style={styles.actionPromptText}>Ver detalhes & Atendimento</Text>
-          <Feather name="arrow-right" size={14} color="#38BDF8" />
+          <View style={styles.actionArrowCircle}>
+            <Feather name="arrow-right" size={13} color="#38BDF8" />
+          </View>
         </View>
       </View>
     </TouchableOpacity>
@@ -903,169 +913,198 @@ const ModernTimelineOsCard: React.FC<CardProps> = ({ chamado, onPress }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0B0F17',
+    backgroundColor: '#070A11',
     paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight || 0 : 0,
   },
+
+  // HEADER
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingTop: 12,
-    paddingBottom: 10,
-    backgroundColor: '#111726',
+    paddingBottom: 12,
+    backgroundColor: '#070A11',
     borderBottomWidth: 1,
-    borderBottomColor: '#1E293B',
+    borderBottomColor: 'rgba(255, 255, 255, 0.06)',
   },
   headerTitleGroup: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   hamburgerBtn: {
-    padding: 8,
-    marginRight: 10,
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: '#0F172A',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    marginRight: 12,
   },
   headerTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
+    fontSize: 17,
+    fontWeight: '800',
     color: '#F8FAFC',
+    letterSpacing: 0.3,
   },
   headerSubtitle: {
-    fontSize: 12,
-    color: '#94A3B8',
+    fontSize: 11,
+    color: '#64748B',
+    marginTop: 2,
+    fontWeight: '500',
   },
   headerActions: {
     flexDirection: 'row',
     alignItems: 'center',
   },
-  iconBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: '#161F30',
+  refreshBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: '#0F172A',
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#1E293B',
+    borderColor: 'rgba(56, 189, 248, 0.25)',
+  },
+
+  // SEARCH BAR
+  searchWrapper: {
+    paddingHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 10,
   },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#161F30',
-    marginHorizontal: 16,
-    marginTop: 14,
-    marginBottom: 12,
-    borderRadius: 12,
-    paddingHorizontal: 12,
+    backgroundColor: '#0F172A',
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    height: 46,
     borderWidth: 1,
-    borderColor: '#1E293B',
+    borderColor: 'rgba(255, 255, 255, 0.08)',
   },
   searchIcon: {
-    marginRight: 8,
+    marginRight: 10,
   },
   searchInput: {
     flex: 1,
-    height: 44,
     color: '#F8FAFC',
     fontSize: 13,
+    fontWeight: '500',
   },
-  pillsContainer: {
+
+  // KPI STATUS TABS
+  kpiTabsContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    gap: 8,
     marginBottom: 10,
   },
-  pillsScrollContent: {
-    paddingHorizontal: 16,
+  kpiTabItem: {
+    flex: 1,
+    backgroundColor: '#0F172A',
+    borderRadius: 14,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.06)',
   },
-  statusPill: {
+  kpiTabItemActive: {
+    backgroundColor: 'rgba(56, 189, 248, 0.12)',
+    borderColor: 'rgba(56, 189, 248, 0.4)',
+  },
+  kpiTabTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#161F30',
-    borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    marginRight: 8,
-    borderWidth: 1,
-    borderColor: '#1E293B',
+    marginBottom: 4,
   },
-  statusPillActive: {
-    backgroundColor: 'rgba(56, 189, 248, 0.15)',
-    borderColor: '#38BDF8',
+  kpiStatusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginRight: 5,
   },
-  statusPillText: {
+  kpiTabLabel: {
     color: '#94A3B8',
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
   },
-  statusPillTextActive: {
-    color: '#38BDF8',
-    fontWeight: 'bold',
-  },
-  pillBadge: {
-    backgroundColor: '#0F172A',
-    borderRadius: 10,
-    paddingHorizontal: 6,
+  kpiCountBadge: {
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    paddingHorizontal: 8,
     paddingVertical: 2,
-    marginLeft: 6,
+    borderRadius: 8,
   },
-  pillBadgeActive: {
-    backgroundColor: '#38BDF8',
+  kpiCountBadgeText: {
+    color: '#F8FAFC',
+    fontSize: 11,
+    fontWeight: '800',
   },
-  pillBadgeText: {
-    color: '#94A3B8',
-    fontSize: 10,
-    fontWeight: 'bold',
-  },
-  pillBadgeTextActive: {
-    color: '#0F172A',
-  },
+
+  // CALENDAR STRIP
   calendarStripContainer: {
     marginBottom: 10,
   },
   calendarStripContent: {
     paddingHorizontal: 16,
+    gap: 8,
   },
   dayCard: {
-    width: 60,
-    height: 60,
-    borderRadius: 12,
-    backgroundColor: '#161F30',
+    width: 58,
+    height: 58,
+    borderRadius: 14,
+    backgroundColor: '#0F172A',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 8,
     borderWidth: 1,
-    borderColor: '#1E293B',
+    borderColor: 'rgba(255, 255, 255, 0.06)',
+    position: 'relative',
   },
   dayCardActive: {
     backgroundColor: '#38BDF8',
     borderColor: '#38BDF8',
+    shadowColor: '#38BDF8',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.4,
+    shadowRadius: 6,
+    elevation: 4,
   },
   dayNameText: {
     fontSize: 10,
-    fontWeight: 'bold',
+    fontWeight: '800',
     color: '#94A3B8',
+    letterSpacing: 0.5,
   },
   dayNumText: {
-    fontSize: 14,
-    fontWeight: 'bold',
+    fontSize: 15,
+    fontWeight: '900',
     color: '#F8FAFC',
-    marginTop: 2,
+    marginTop: 1,
   },
   dayTextActive: {
-    color: '#0F172A',
+    color: '#070A11',
   },
   dayBadgeCount: {
     position: 'absolute',
-    top: 4,
-    right: 4,
-    backgroundColor: 'rgba(15, 23, 42, 0.6)',
-    borderRadius: 8,
+    top: 3,
+    right: 3,
+    backgroundColor: 'rgba(56, 189, 248, 0.15)',
+    borderRadius: 6,
     paddingHorizontal: 4,
     paddingVertical: 1,
   },
   dayBadgeCountText: {
-    color: '#F8FAFC',
+    color: '#38BDF8',
     fontSize: 8,
-    fontWeight: 'bold',
+    fontWeight: '800',
   },
+
+  // EMPTY & LOADING
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -1074,7 +1113,8 @@ const styles = StyleSheet.create({
   loadingText: {
     color: '#94A3B8',
     marginTop: 12,
-    fontSize: 14,
+    fontSize: 13,
+    fontWeight: '500',
   },
   emptyContainer: {
     flex: 1,
@@ -1082,137 +1122,209 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 32,
   },
+  emptyIconCircle: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: 'rgba(56, 189, 248, 0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(56, 189, 248, 0.25)',
+    marginBottom: 16,
+  },
   emptyTitle: {
     color: '#F8FAFC',
-    fontSize: 17,
-    fontWeight: '700',
-    marginTop: 14,
+    fontSize: 16,
+    fontWeight: '800',
     marginBottom: 6,
   },
   emptySub: {
     color: '#64748B',
-    fontSize: 13,
+    fontSize: 12,
     textAlign: 'center',
+    lineHeight: 18,
   },
+
+  // LIST CONTENT
   listContent: {
     paddingHorizontal: 16,
-    paddingBottom: 24,
+    paddingBottom: 28,
   },
+
+  // O.S. CARD MODERNO
   cardContainer: {
     flexDirection: 'row',
-    backgroundColor: '#111726',
-    borderRadius: 14,
+    backgroundColor: '#0D1424',
+    borderRadius: 18,
     marginBottom: 12,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: '#1E293B',
+    borderColor: 'rgba(255, 255, 255, 0.07)',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  cardContainerAtrasada: {
+    borderColor: '#EF4444',
+    backgroundColor: 'rgba(239, 68, 68, 0.06)',
   },
   timelineBar: {
-    width: 5,
+    width: 4.5,
   },
   cardBody: {
     flex: 1,
-    padding: 12,
+    padding: 14,
+  },
+  atrasadaCardHeaderBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    marginBottom: 8,
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.3)',
+  },
+  atrasadaCardHeaderBadgeText: {
+    color: '#EF4444',
+    fontSize: 10.5,
+    fontWeight: '800',
+    letterSpacing: 0.5,
   },
   cardTopRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 6,
+    marginBottom: 8,
   },
   protocolBadge: {
     flexDirection: 'row',
     alignItems: 'center',
   },
-  protocolText: {
+  protocolHash: {
     color: '#38BDF8',
-    fontSize: 12,
-    fontWeight: 'bold',
-    marginLeft: 4,
+    fontSize: 13,
+    fontWeight: '800',
+    marginRight: 2,
+  },
+  protocolText: {
+    color: '#F8FAFC',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  protocolSubText: {
+    color: '#64748B',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  topRightRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   timeBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#161F30',
-    borderRadius: 6,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: 8,
     paddingHorizontal: 6,
-    paddingVertical: 2,
+    paddingVertical: 3,
   },
   timeText: {
     color: '#94A3B8',
-    fontSize: 11,
+    fontSize: 10.5,
     fontWeight: '600',
-  },
-  clientRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 6,
-  },
-  clientNameText: {
-    color: '#F8FAFC',
-    fontSize: 15,
-    fontWeight: 'bold',
-    flex: 1,
-    marginRight: 8,
   },
   statusBadgeDot: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 10,
-    paddingHorizontal: 8,
+    borderRadius: 8,
+    paddingHorizontal: 7,
     paddingVertical: 3,
+    borderWidth: 1,
   },
   statusDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    marginRight: 5,
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    marginRight: 4,
   },
   statusDotText: {
     fontSize: 10,
-    fontWeight: 'bold',
+    fontWeight: '800',
+  },
+  clientNameText: {
+    color: '#F8FAFC',
+    fontSize: 15,
+    fontWeight: '800',
+    marginBottom: 6,
+  },
+  problemBox: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: 10,
+  },
+  problemTag: {
+    color: '#38BDF8',
+    fontSize: 12,
+    fontWeight: '700',
   },
   problemText: {
-    color: '#CBD5E1',
+    color: '#94A3B8',
     fontSize: 12,
     lineHeight: 16,
-    marginBottom: 10,
   },
   metaGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    marginBottom: 8,
+    gap: 6,
+    marginBottom: 10,
   },
   metaChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#161F30',
-    borderRadius: 6,
+    backgroundColor: '#070A11',
+    borderRadius: 8,
     paddingHorizontal: 8,
     paddingVertical: 4,
-    marginRight: 6,
-    marginBottom: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.05)',
     maxWidth: '48%',
   },
   metaChipText: {
-    color: '#94A3B8',
+    color: '#CBD5E1',
     fontSize: 11,
-    marginLeft: 4,
+    marginLeft: 5,
+    fontWeight: '500',
   },
   cardFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingTop: 8,
+    paddingTop: 10,
     borderTopWidth: 1,
-    borderTopColor: '#1E293B',
+    borderTopColor: 'rgba(255, 255, 255, 0.06)',
   },
   actionPromptText: {
     color: '#38BDF8',
-    fontSize: 11,
-    fontWeight: 'bold',
+    fontSize: 11.5,
+    fontWeight: '700',
   },
+  actionArrowCircle: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: 'rgba(56, 189, 248, 0.12)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  // DRAWER MENU
   drawerOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.75)',
@@ -1402,41 +1514,5 @@ const styles = StyleSheet.create({
     color: '#475569',
     fontSize: 10.5,
     fontWeight: '500',
-  },
-  atrasadaTopAlertBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(239, 68, 68, 0.15)',
-    borderWidth: 1,
-    borderColor: '#EF4444',
-    marginHorizontal: 16,
-    marginBottom: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-  },
-  atrasadaTopAlertText: {
-    color: '#EF4444',
-    fontSize: 12,
-    fontWeight: 'bold',
-    flex: 1,
-  },
-  atrasadaCardHeaderBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(239, 68, 68, 0.2)',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 6,
-    marginBottom: 8,
-    alignSelf: 'flex-start',
-    borderWidth: 1,
-    borderColor: 'rgba(239, 68, 68, 0.4)',
-  },
-  atrasadaCardHeaderBadgeText: {
-    color: '#EF4444',
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 0.5,
   },
 });
