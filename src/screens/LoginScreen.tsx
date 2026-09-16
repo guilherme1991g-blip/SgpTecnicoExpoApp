@@ -20,30 +20,14 @@ interface Props {
 
 export const LoginScreen: React.FC<Props> = ({ onLoginSuccess }) => {
   const [isLoading, setIsLoading] = useState(false);
-  const pulseAnim = useRef(new Animated.Value(1)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
       toValue: 1,
-      duration: 600,
+      duration: 500,
       useNativeDriver: true,
     }).start();
-
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseAnim, {
-          toValue: 1.05,
-          duration: 1600,
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulseAnim, {
-          toValue: 1,
-          duration: 1600,
-          useNativeDriver: true,
-        }),
-      ])
-    ).start();
   }, []);
 
   const handleLogin = async () => {
@@ -62,14 +46,6 @@ export const LoginScreen: React.FC<Props> = ({ onLoginSuccess }) => {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#070A11" />
       <Animated.View style={[styles.content, { opacity: fadeAnim }]}>
-        {/* LOGO GLOW */}
-        <Animated.View
-          style={[
-            styles.logoAura,
-            { transform: [{ scale: pulseAnim }] },
-          ]}
-        />
-
         <Image
           source={require('../../assets/logo-white.png')}
           style={styles.logoImage}
@@ -122,31 +98,21 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 24,
-    position: 'relative',
-  },
-  logoAura: {
-    position: 'absolute',
-    top: '32%',
-    width: 200,
-    height: 90,
-    borderRadius: 90,
-    backgroundColor: 'rgba(99, 102, 241, 0.12)',
-    filter: 'blur(30px)',
   },
   logoImage: {
-    width: 260,
-    height: 80,
-    marginBottom: 12,
+    width: 250,
+    height: 75,
+    marginBottom: 16,
   },
   statusPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(15, 23, 42, 0.8)',
+    backgroundColor: '#0F172A',
     paddingHorizontal: 12,
     paddingVertical: 5,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: 'rgba(56, 189, 248, 0.25)',
+    borderColor: 'rgba(56, 189, 248, 0.2)',
     marginBottom: 12,
   },
   statusDot: {
@@ -182,9 +148,9 @@ const styles = StyleSheet.create({
     height: 54,
     width: '100%',
     shadowColor: '#38BDF8',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.35,
-    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
     elevation: 6,
   },
   btnIcon: {
