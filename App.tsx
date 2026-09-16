@@ -2,6 +2,7 @@ import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { View, Text, StyleSheet, StatusBar, TouchableOpacity } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { LoginScreen } from './src/screens/LoginScreen';
 import { OsListScreen } from './src/screens/OsListScreen';
@@ -78,9 +79,10 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 
 export default function App() {
   return (
-    <ErrorBoundary>
-      <View style={styles.container}>
-        <StatusBar barStyle="light-content" backgroundColor="#0B0F17" translucent={true} />
+    <SafeAreaProvider>
+      <ErrorBoundary>
+        <View style={styles.container}>
+          <StatusBar barStyle="light-content" backgroundColor="#0B0F17" translucent={true} />
         <NavigationContainer>
           <Stack.Navigator
             initialRouteName="FacialLogin"
@@ -211,7 +213,8 @@ export default function App() {
           </Stack.Navigator>
         </NavigationContainer>
       </View>
-    </ErrorBoundary>
+      </ErrorBoundary>
+    </SafeAreaProvider>
   );
 }
 

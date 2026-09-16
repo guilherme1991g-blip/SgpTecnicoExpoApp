@@ -19,6 +19,7 @@ import {
   fetchOrdensDeServicoFromSgp,
 } from '../services/sgpApi';
 import { getLoggedTecnicoName } from '../services/webhookService';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 
 interface Props {
@@ -151,6 +152,7 @@ export const OsListScreen: React.FC<Props> = ({
   onOpenFinancial,
   onLogout,
 }) => {
+  const insets = useSafeAreaInsets();
   const [selectedTab, setSelectedTab] = useState<number>(0); // 0=Abertas, 1=Em Execução, 2=Finalizadas (7d)
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [selectedDateFilter, setSelectedDateFilter] = useState<string>('TODAS');
@@ -515,7 +517,15 @@ export const OsListScreen: React.FC<Props> = ({
         onRequestClose={() => setIsMenuOpen(false)}
       >
         <View style={styles.drawerOverlay}>
-          <View style={styles.drawerContent}>
+          <View
+            style={[
+              styles.drawerContent,
+              {
+                paddingTop: Math.max(insets.top, Platform.OS === 'android' ? (StatusBar.currentHeight || 0) : 20) + 16,
+                paddingBottom: Math.max(insets.bottom, 12) + 6,
+              },
+            ]}
+          >
             {/* DRAWER TOP HEADER */}
             <View style={styles.drawerHeader}>
               <View style={styles.drawerBrandRow}>
@@ -1216,7 +1226,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#080C14',
     height: '100%',
     paddingHorizontal: 16,
-    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 0) + 12 : 50,
     borderRightWidth: 1,
     borderRightColor: '#1E293B',
     justifyContent: 'space-between',
