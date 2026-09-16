@@ -278,7 +278,7 @@ export const FacialLoginScreen: React.FC<Props> = ({ onLoginSuccess }) => {
               </View>
             </Animated.View>
           ) : (
-            /* TELA DE AUTENTICAÇÃO (PRE-LOGIN - CLEAN SEM TECLADO EMBUTIDO) */
+            /* TELA DE AUTENTICAÇÃO (PRE-LOGIN - CARD MODERNO & REFINADO) */
             <Animated.View
               style={[
                 styles.preLoginContainer,
@@ -289,29 +289,51 @@ export const FacialLoginScreen: React.FC<Props> = ({ onLoginSuccess }) => {
               ]}
             >
               <View style={styles.authGlassCard}>
+                {/* LINHA SUPERIOR DE DESTAQUE */}
+                <View style={styles.cardTopAccentBar} />
+
+                {/* HEADER DO CARD COM ÍCONE DE CHAVE E BADGE */}
                 <View style={styles.authCardHeader}>
-                  <View style={styles.keyIconCircle}>
-                    <Feather name="key" size={22} color="#38BDF8" />
+                  <View style={styles.keyBadgeWrapper}>
+                    <View style={styles.keyIconCircle}>
+                      <Feather name="shield" size={20} color="#38BDF8" />
+                    </View>
+                    <View style={styles.headerTitleBox}>
+                      <Text style={styles.authCardTitle}>IDENTIFICAÇÃO DO TÉCNICO</Text>
+                      <Text style={styles.authCardSubtitle}>
+                        Acesso seguro ao portal operacional
+                      </Text>
+                    </View>
                   </View>
-                  <Text style={styles.authCardTitle}>ACESSO DO TÉCNICO</Text>
-                  <Text style={styles.authCardSubtitle}>
-                    Digite seu código numérico de identificação
-                  </Text>
                 </View>
 
-                {/* CAMPO DE ENTRADA NUMÉRICA */}
+                {/* DIVISOR INTERNO SUTIL */}
+                <View style={styles.cardInternalDivider} />
+
+                {/* LABEL FLUTUANTE DO CAMPO */}
+                <View style={styles.inputHeaderRow}>
+                  <Text style={styles.inputFieldLabel}>CÓDIGO DE ACESSO (PIN)</Text>
+                  {numericCode.length > 0 && (
+                    <Text style={styles.inputCounterText}>{numericCode.length} dígitos</Text>
+                  )}
+                </View>
+
+                {/* CAMPO DE ENTRADA NUMÉRICA REFINADO */}
                 <View
                   style={[
                     styles.inputWrapper,
                     isFocused && styles.inputWrapperFocused,
+                    numericCode.length > 0 && styles.inputWrapperHasValue,
                   ]}
                 >
-                  <Feather
-                    name="hash"
-                    size={22}
-                    color={isFocused ? '#38BDF8' : '#64748B'}
-                    style={{ marginRight: 10 }}
-                  />
+                  <View style={styles.inputIconBox}>
+                    <Feather
+                      name="hash"
+                      size={20}
+                      color={isFocused ? '#38BDF8' : '#64748B'}
+                    />
+                  </View>
+
                   <TextInput
                     ref={inputRef}
                     style={styles.numericTextInput}
@@ -320,7 +342,7 @@ export const FacialLoginScreen: React.FC<Props> = ({ onLoginSuccess }) => {
                       setNumericCode(text);
                       setStatusMsg(null);
                     }}
-                    placeholder="Ex: 123456"
+                    placeholder="Digite seu código..."
                     placeholderTextColor="#475569"
                     keyboardType="number-pad"
                     maxLength={10}
@@ -331,17 +353,27 @@ export const FacialLoginScreen: React.FC<Props> = ({ onLoginSuccess }) => {
                     returnKeyType="done"
                     onSubmitEditing={() => handleValidateCode()}
                   />
+
                   {numericCode.length > 0 && (
                     <TouchableOpacity
                       onPress={() => {
                         setNumericCode('');
                         setStatusMsg(null);
                       }}
+                      style={styles.clearBtn}
                       hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                     >
-                      <Feather name="x-circle" size={18} color="#64748B" />
+                      <Feather name="x" size={16} color="#94A3B8" />
                     </TouchableOpacity>
                   )}
+                </View>
+
+                {/* DICA DE UTILIZAÇÃO */}
+                <View style={styles.inputHelperRow}>
+                  <Feather name="info" size={12} color="#64748B" style={{ marginRight: 5 }} />
+                  <Text style={styles.inputHelperText}>
+                    Utilize o mesmo código numérico do seu usuário SGP.
+                  </Text>
                 </View>
 
                 {/* FEEDBACK / STATUS MSG */}
@@ -405,14 +437,16 @@ export const FacialLoginScreen: React.FC<Props> = ({ onLoginSuccess }) => {
                   activeOpacity={0.88}
                 >
                   <Text style={styles.authSubmitBtnText}>ENTRAR NO SISTEMA</Text>
-                  <Feather name="arrow-right" size={18} color="#070A11" style={{ marginLeft: 8 }} />
+                  <View style={styles.submitArrowCircle}>
+                    <Feather name="arrow-right" size={16} color="#070A11" />
+                  </View>
                 </TouchableOpacity>
 
                 {/* FOOTER DE SEGURANÇA */}
                 <View style={styles.securityFooter}>
-                  <Feather name="lock" size={12} color="#475569" style={{ marginRight: 6 }} />
+                  <Feather name="lock" size={12} color="#10B981" style={{ marginRight: 6 }} />
                   <Text style={styles.securityFooterText}>
-                    Acesso Criptografado de Ponta a Ponta • Vega Sync v2.0
+                    Conexão Segura • SGP Integrado em Tempo Real
                   </Text>
                 </View>
               </View>
@@ -432,7 +466,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: 20,
-    paddingVertical: 24,
+    paddingVertical: 20,
     alignItems: 'center',
     justifyContent: 'center',
     minHeight: '100%',
@@ -441,13 +475,13 @@ const styles = StyleSheet.create({
   // HEADER & LOGO
   headerSection: {
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: 20,
     width: '100%',
   },
   logoImage: {
-    width: 240,
-    height: 70,
-    marginBottom: 12,
+    width: 230,
+    height: 68,
+    marginBottom: 10,
   },
   systemStatusPill: {
     flexDirection: 'row',
@@ -473,76 +507,149 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
 
-  // PRE-LOGIN AUTH CARD
+  // PRE-LOGIN AUTH CARD (REFINADO & MODERNO)
   preLoginContainer: {
     width: '100%',
-    maxWidth: 380,
+    maxWidth: 390,
     alignItems: 'center',
   },
   authGlassCard: {
     width: '100%',
-    backgroundColor: '#0F172A',
+    backgroundColor: '#0D1424',
     borderRadius: 24,
-    padding: 24,
+    padding: 22,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
+    borderColor: 'rgba(56, 189, 248, 0.18)',
     shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.35,
-    shadowRadius: 18,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.45,
+    shadowRadius: 24,
+    elevation: 10,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  cardTopAccentBar: {
+    position: 'absolute',
+    top: 0,
+    left: 24,
+    right: 24,
+    height: 3,
+    backgroundColor: '#38BDF8',
+    borderBottomLeftRadius: 3,
+    borderBottomRightRadius: 3,
   },
   authCardHeader: {
+    marginTop: 6,
+    marginBottom: 16,
+  },
+  keyBadgeWrapper: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 22,
   },
   keyIconCircle: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: 'rgba(56, 189, 248, 0.1)',
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: 'rgba(56, 189, 248, 0.12)',
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(56, 189, 248, 0.25)',
-    marginBottom: 12,
+    borderColor: 'rgba(56, 189, 248, 0.3)',
+    marginRight: 14,
+  },
+  headerTitleBox: {
+    flex: 1,
   },
   authCardTitle: {
     color: '#F8FAFC',
-    fontSize: 17,
+    fontSize: 15,
     fontWeight: '800',
-    letterSpacing: 1.2,
-    textAlign: 'center',
+    letterSpacing: 0.8,
   },
   authCardSubtitle: {
     color: '#64748B',
     fontSize: 12,
-    marginTop: 4,
-    textAlign: 'center',
+    marginTop: 2,
+  },
+  cardInternalDivider: {
+    width: '100%',
+    height: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    marginBottom: 16,
   },
 
-  // INPUT WRAPPER
+  // LABEL & INPUT
+  inputHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  inputFieldLabel: {
+    color: '#94A3B8',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1,
+  },
+  inputCounterText: {
+    color: '#38BDF8',
+    fontSize: 11,
+    fontWeight: '700',
+  },
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#070A11',
-    borderRadius: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     borderWidth: 1.5,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-    marginBottom: 16,
+    borderColor: 'rgba(255, 255, 255, 0.09)',
+    marginBottom: 10,
   },
   inputWrapperFocused: {
     borderColor: '#38BDF8',
+    backgroundColor: '#060E1A',
+  },
+  inputWrapperHasValue: {
+    borderColor: 'rgba(56, 189, 248, 0.4)',
+  },
+  inputIconBox: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
   },
   numericTextInput: {
     flex: 1,
     color: '#F8FAFC',
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: '700',
     letterSpacing: 2,
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  clearBtn: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 6,
+  },
+  inputHelperRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    paddingHorizontal: 2,
+  },
+  inputHelperText: {
+    color: '#64748B',
+    fontSize: 11,
+    fontWeight: '500',
   },
 
   // STATUS BANNER
@@ -565,7 +672,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 12,
     borderRadius: 12,
-    marginBottom: 16,
+    marginBottom: 14,
   },
   statusBannerError: {
     backgroundColor: 'rgba(239, 68, 68, 0.15)',
@@ -594,13 +701,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: '#38BDF8',
     paddingVertical: 15,
-    borderRadius: 14,
+    paddingHorizontal: 20,
+    borderRadius: 16,
     width: '100%',
     shadowColor: '#38BDF8',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    elevation: 6,
   },
   authSubmitBtnDisabled: {
     opacity: 0.45,
@@ -609,8 +717,17 @@ const styles = StyleSheet.create({
   authSubmitBtnText: {
     color: '#070A11',
     fontSize: 14,
-    fontWeight: '800',
-    letterSpacing: 1,
+    fontWeight: '900',
+    letterSpacing: 0.8,
+    marginRight: 8,
+  },
+  submitArrowCircle: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: 'rgba(7, 10, 17, 0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   securityFooter: {
     flexDirection: 'row',
@@ -619,30 +736,30 @@ const styles = StyleSheet.create({
     marginTop: 18,
   },
   securityFooterText: {
-    color: '#475569',
-    fontSize: 10,
+    color: '#64748B',
+    fontSize: 11,
     fontWeight: '500',
   },
 
   // POST-LOGIN / SESSÃO ATIVA
   postLoginContainer: {
     width: '100%',
-    maxWidth: 380,
+    maxWidth: 390,
     alignItems: 'center',
   },
   technicianCard: {
     width: '100%',
-    backgroundColor: '#0F172A',
+    backgroundColor: '#0D1424',
     borderRadius: 24,
     padding: 24,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
+    borderColor: 'rgba(56, 189, 248, 0.18)',
     shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.35,
-    shadowRadius: 18,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.45,
+    shadowRadius: 24,
+    elevation: 10,
   },
   avatarWrapper: {
     position: 'relative',
@@ -675,7 +792,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
-    borderColor: '#0F172A',
+    borderColor: '#0D1424',
   },
   greetingText: {
     color: '#94A3B8',
