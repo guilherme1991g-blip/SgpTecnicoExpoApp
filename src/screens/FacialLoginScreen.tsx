@@ -293,17 +293,8 @@ export const FacialLoginScreen: React.FC<Props> = ({ onLoginSuccess }) => {
                 style={[
                   styles.inputWrapper,
                   isFocused && styles.inputWrapperFocused,
-                  numericCode.length > 0 && styles.inputWrapperHasValue,
                 ]}
               >
-                <View style={styles.inputIconBox}>
-                  <Feather
-                    name="hash"
-                    size={22}
-                    color={isFocused ? '#38BDF8' : '#64748B'}
-                  />
-                </View>
-
                 <TextInput
                   ref={inputRef}
                   style={styles.numericTextInput}
@@ -495,18 +486,6 @@ const styles = StyleSheet.create({
     borderColor: '#38BDF8',
     backgroundColor: '#0B132B',
   },
-  inputWrapperHasValue: {
-    borderColor: 'rgba(56, 189, 248, 0.45)',
-  },
-  inputIconBox: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.04)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 10,
-  },
   numericTextInput: {
     flex: 1,
     color: '#F8FAFC',
@@ -514,6 +493,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 1.5,
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    paddingVertical: 0,
   },
   clearBtn: {
     width: 26,
