@@ -129,10 +129,9 @@ export const OfflineClientsScreen: React.FC<Props> = ({ onBackToOs }) => {
   <div id="map"></div>
   <script>
     var map = L.map('map').setView([${centerLat}, ${centerLng}], 13);
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
       maxZoom: 19,
-      subdomains: 'abcd',
-      attribution: '&copy; OpenStreetMap &copy; CARTO'
+      attribution: 'Tiles &copy; Esri'
     }).addTo(map);
 
     var markersData = ${JSON.stringify(markers)};
