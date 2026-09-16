@@ -403,7 +403,7 @@ export const sendAttendanceWebhook = async (
     const techLat = extra?.latitude;
     const techLng = extra?.longitude;
     const coordsStr = extra?.coordsFormatted || (techLat && techLng ? `${techLat},${techLng}` : undefined);
-    const trackingLinkStr = extra?.linkTracking || (techLat && techLng ? `https://www.google.com/maps?q=${techLat},${techLng}` : undefined);
+    const trackingLinkStr = extra?.linkTracking || `https://n8n.zentos.com.br/webhook/rastrear-tecnico?os=${osId}`;
 
     const payload: AttendanceWebhookPayload = {
       status,
@@ -516,6 +516,7 @@ export const sendTechnicianLocationTrackingWebhook = async (
     const nomeTecnicoFinal = loggedTecnicoName || chamado?.os_tecnico_responsavel || 'Técnico de Campo';
     const coordsFormatted = `${lat},${lng}`;
     const linkGmaps = `https://www.google.com/maps?q=${lat},${lng}`;
+    const linkTracking = `https://n8n.zentos.com.br/webhook/rastrear-tecnico?os=${osId}`;
     const deviceId = await getRealHardwareDeviceId();
 
     const payload = {
@@ -530,7 +531,8 @@ export const sendTechnicianLocationTrackingWebhook = async (
       latitude: lat,
       longitude: lng,
       coordenadas: coordsFormatted,
-      link_rastreamento: linkGmaps,
+      link_gmaps: linkGmaps,
+      link_rastreamento: linkTracking,
       data_atualizacao: new Date().toISOString(),
       dispositivo_id: deviceId,
     };
