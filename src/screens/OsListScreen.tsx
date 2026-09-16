@@ -12,6 +12,7 @@ import {
   Platform,
   ScrollView,
   Modal,
+  Image,
 } from 'react-native';
 import { ChamadoItem } from '../types/sgp';
 import {
@@ -339,7 +340,7 @@ export const OsListScreen: React.FC<Props> = ({
             <Feather name="menu" size={22} color="#F8FAFC" />
           </TouchableOpacity>
           <View>
-            <Text style={styles.headerTitle}>Agenda SGP Técnico</Text>
+            <Text style={styles.headerTitle}>Agenda Vega Sync</Text>
             <Text style={styles.headerSubtitle}>
               {filteredChamados.length} O.S. (Mais novas primeiro)
             </Text>
@@ -509,12 +510,13 @@ export const OsListScreen: React.FC<Props> = ({
           <View style={styles.drawerContent}>
             {/* DRAWER HEADER */}
             <View style={styles.drawerHeader}>
-              <View style={styles.drawerHeaderIcon}>
-                <Feather name="shield" size={24} color="#38BDF8" />
-              </View>
+              <Image
+                source={require('../../assets/logo-symbol-white.png')}
+                style={{ width: 34, height: 34, resizeMode: 'contain' }}
+              />
 
               <View style={{ flex: 1, marginLeft: 12 }}>
-                <Text style={styles.drawerTitle}>SGP Técnico</Text>
+                <Text style={styles.drawerTitle}>Vega Sync</Text>
                 <Text style={styles.drawerSubtitle}>Menu de Operações</Text>
               </View>
 

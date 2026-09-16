@@ -8,6 +8,7 @@ import {
   SafeAreaView,
   Platform,
   StatusBar,
+  Image,
 } from 'react-native';
 import { fetchTiposOcorrencia } from '../services/sgpApi';
 import { Feather } from '@expo/vector-icons';
@@ -34,12 +35,13 @@ export const LoginScreen: React.FC<Props> = ({ onLoginSuccess }) => {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.content}>
-        <View style={styles.iconCircle}>
-          <Feather name="shield" size={36} color="#38BDF8" />
-        </View>
+        <Image
+          source={require('../../assets/logo-white.png')}
+          style={styles.logoImage}
+          resizeMode="contain"
+        />
 
-        <Text style={styles.title}>SGP Técnico</Text>
-        <Text style={styles.subtitle}>Sistema de Gestão de Ordens de Serviço</Text>
+        <Text style={styles.subtitle}>Gestão de Campo e Ordens de Serviço</Text>
 
         <TouchableOpacity
           style={styles.button}
@@ -52,7 +54,7 @@ export const LoginScreen: React.FC<Props> = ({ onLoginSuccess }) => {
           ) : (
             <>
               <Feather name="log-in" size={18} color="#0F172A" style={styles.btnIcon} />
-              <Text style={styles.buttonText}>Acessar SGP</Text>
+              <Text style={styles.buttonText}>Acessar Vega Sync</Text>
             </>
           )}
         </TouchableOpacity>
@@ -73,27 +75,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 24,
   },
-  iconCircle: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
-    backgroundColor: '#111726',
-    borderWidth: 1,
-    borderColor: '#1E293B',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  title: {
-    fontSize: 26,
-    fontWeight: '700',
-    color: '#F8FAFC',
-    letterSpacing: 0.3,
+  logoImage: {
+    width: 240,
+    height: 80,
+    marginBottom: 12,
   },
   subtitle: {
     fontSize: 13,
-    color: '#64748B',
-    marginTop: 6,
+    color: '#94A3B8',
     marginBottom: 36,
     textAlign: 'center',
   },
