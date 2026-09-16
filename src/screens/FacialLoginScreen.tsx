@@ -151,14 +151,15 @@ export const FacialLoginScreen: React.FC<Props> = ({ onLoginSuccess }) => {
 
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={{ flex: 1 }}
+        style={styles.keyboardContainer}
       >
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          bounces={false}
         >
-          {/* HEADER COM LOGO VEGA SYNC LIMPA */}
+          {/* TOPO: LOGO VEGA SYNC & STATUS */}
           <Animated.View
             style={[
               styles.headerSection,
@@ -181,234 +182,238 @@ export const FacialLoginScreen: React.FC<Props> = ({ onLoginSuccess }) => {
             </View>
           </Animated.View>
 
-          {/* SESSÃO ATIVA (POST-LOGIN) */}
-          {loggedTecnico ? (
-            <Animated.View
-              style={[
-                styles.postLoginContainer,
-                {
-                  opacity: fadeAnim,
-                  transform: [{ translateY: slideAnim }],
-                },
-              ]}
-            >
-              {/* CARD PRINCIPAL DO TÉCNICO AUTENTICADO */}
-              <View style={styles.technicianCard}>
-                {/* AVATAR COM BADGE */}
-                <View style={styles.avatarWrapper}>
-                  <View style={styles.avatarCircle}>
-                    <Text style={styles.avatarInitials}>{getInitials(loggedTecnico)}</Text>
-                  </View>
-                  <View style={styles.avatarVerifiedBadge}>
-                    <Feather name="check" size={13} color="#FFFFFF" />
-                  </View>
-                </View>
-
-                {/* SAUDAÇÃO & NOME */}
-                <Text style={styles.greetingText}>{getGreeting()},</Text>
-                <Text style={styles.technicianName} numberOfLines={2}>
-                  {loggedTecnico}
-                </Text>
-
-                {/* CARGO & STATUS */}
-                <View style={styles.roleBadgeContainer}>
-                  <View style={styles.rolePill}>
-                    <Feather
-                      name={loggedRole.includes('atend') ? 'headphones' : 'tool'}
-                      size={13}
-                      color="#38BDF8"
-                      style={{ marginRight: 6 }}
-                    />
-                    <Text style={styles.rolePillText}>
-                      {loggedRole.includes('atend') ? 'Atendimento / Suporte' : 'Técnico de Campo'}
-                    </Text>
-                  </View>
-
-                  <View style={styles.connectedPill}>
-                    <View style={styles.connectedDot} />
-                    <Text style={styles.connectedPillText}>Sessão Ativa</Text>
-                  </View>
-                </View>
-
-                {/* DIVISOR */}
-                <View style={styles.cardDivider} />
-
-                {/* INFO CARDS RÁPIDOS */}
-                <View style={styles.quickInfoGrid}>
-                  <View style={styles.quickInfoItem}>
-                    <Feather name="shield" size={16} color="#818CF8" />
-                    <Text style={styles.quickInfoLabel}>Segurança</Text>
-                    <Text style={styles.quickInfoValue}>Autenticado</Text>
-                  </View>
-                  <View style={styles.quickInfoItem}>
-                    <Feather name="zap" size={16} color="#38BDF8" />
-                    <Text style={styles.quickInfoLabel}>Sincronia</Text>
-                    <Text style={styles.quickInfoValue}>Tempo Real</Text>
-                  </View>
-                  <View style={styles.quickInfoItem}>
-                    <Feather name="map-pin" size={16} color="#10B981" />
-                    <Text style={styles.quickInfoLabel}>GPS Live</Text>
-                    <Text style={styles.quickInfoValue}>Habilitado</Text>
-                  </View>
-                </View>
-
-                {/* BOTÃO PRINCIPAL DE ACESSO */}
-                <TouchableOpacity
-                  style={styles.primaryLaunchBtn}
-                  onPress={() => onLoginSuccess(loggedTecnico, loggedRole)}
-                  activeOpacity={0.88}
-                >
-                  <View style={styles.primaryLaunchBtnContent}>
-                    <Text style={styles.primaryLaunchBtnText}>ACESSAR SISTEMA</Text>
-                    <View style={styles.primaryLaunchIconCircle}>
-                      <Feather name="arrow-right" size={18} color="#070A11" />
+          {/* MEIO: FORMULÁRIO OU SESSÃO ATIVA */}
+          <View style={styles.centerSection}>
+            {loggedTecnico ? (
+              <Animated.View
+                style={[
+                  styles.postLoginContainer,
+                  {
+                    opacity: fadeAnim,
+                    transform: [{ translateY: slideAnim }],
+                  },
+                ]}
+              >
+                {/* CARD PRINCIPAL DO TÉCNICO AUTENTICADO */}
+                <View style={styles.technicianCard}>
+                  {/* AVATAR COM BADGE */}
+                  <View style={styles.avatarWrapper}>
+                    <View style={styles.avatarCircle}>
+                      <Text style={styles.avatarInitials}>{getInitials(loggedTecnico)}</Text>
+                    </View>
+                    <View style={styles.avatarVerifiedBadge}>
+                      <Feather name="check" size={13} color="#FFFFFF" />
                     </View>
                   </View>
-                </TouchableOpacity>
 
-                {/* BOTÃO DE TROCA DE USUÁRIO */}
-                <TouchableOpacity
-                  style={styles.switchUserBtn}
-                  onPress={handleLogout}
-                  activeOpacity={0.7}
-                >
-                  <Feather name="log-out" size={14} color="#94A3B8" style={{ marginRight: 6 }} />
-                  <Text style={styles.switchUserBtnText}>Trocar Usuário / Digitar Outro Código</Text>
-                </TouchableOpacity>
-              </View>
-            </Animated.View>
-          ) : (
-            /* TELA DE AUTENTICAÇÃO (PRE-LOGIN - CLEAN: CAMPO, BOTÃO E CONEXÃO SEGURA) */
-            <Animated.View
-              style={[
-                styles.preLoginContainer,
-                {
-                  opacity: fadeAnim,
-                  transform: [{ translateY: slideAnim }],
-                },
-              ]}
-            >
-              {/* LABEL EXTERNO */}
-              <View style={styles.inputLabelContainer}>
-                <Text style={styles.inputLabelText}>Digite o código</Text>
-              </View>
+                  {/* SAUDAÇÃO & NOME */}
+                  <Text style={styles.greetingText}>{getGreeting()},</Text>
+                  <Text style={styles.technicianName} numberOfLines={2}>
+                    {loggedTecnico}
+                  </Text>
 
-              {/* CAMPO DE ENTRADA NUMÉRICA */}
-              <View
+                  {/* CARGO & STATUS */}
+                  <View style={styles.roleBadgeContainer}>
+                    <View style={styles.rolePill}>
+                      <Feather
+                        name={loggedRole.includes('atend') ? 'headphones' : 'tool'}
+                        size={13}
+                        color="#38BDF8"
+                        style={{ marginRight: 6 }}
+                      />
+                      <Text style={styles.rolePillText}>
+                        {loggedRole.includes('atend') ? 'Atendimento / Suporte' : 'Técnico de Campo'}
+                      </Text>
+                    </View>
+
+                    <View style={styles.connectedPill}>
+                      <View style={styles.connectedDot} />
+                      <Text style={styles.connectedPillText}>Sessão Ativa</Text>
+                    </View>
+                  </View>
+
+                  {/* DIVISOR */}
+                  <View style={styles.cardDivider} />
+
+                  {/* INFO CARDS RÁPIDOS */}
+                  <View style={styles.quickInfoGrid}>
+                    <View style={styles.quickInfoItem}>
+                      <Feather name="shield" size={16} color="#818CF8" />
+                      <Text style={styles.quickInfoLabel}>Segurança</Text>
+                      <Text style={styles.quickInfoValue}>Autenticado</Text>
+                    </View>
+                    <View style={styles.quickInfoItem}>
+                      <Feather name="zap" size={16} color="#38BDF8" />
+                      <Text style={styles.quickInfoLabel}>Sincronia</Text>
+                      <Text style={styles.quickInfoValue}>Tempo Real</Text>
+                    </View>
+                    <View style={styles.quickInfoItem}>
+                      <Feather name="map-pin" size={16} color="#10B981" />
+                      <Text style={styles.quickInfoLabel}>GPS Live</Text>
+                      <Text style={styles.quickInfoValue}>Habilitado</Text>
+                    </View>
+                  </View>
+
+                  {/* BOTÃO PRINCIPAL DE ACESSO */}
+                  <TouchableOpacity
+                    style={styles.primaryLaunchBtn}
+                    onPress={() => onLoginSuccess(loggedTecnico, loggedRole)}
+                    activeOpacity={0.88}
+                  >
+                    <View style={styles.primaryLaunchBtnContent}>
+                      <Text style={styles.primaryLaunchBtnText}>ACESSAR SISTEMA</Text>
+                      <View style={styles.primaryLaunchIconCircle}>
+                        <Feather name="arrow-right" size={18} color="#070A11" />
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+
+                  {/* BOTÃO DE TROCA DE USUÁRIO */}
+                  <TouchableOpacity
+                    style={styles.switchUserBtn}
+                    onPress={handleLogout}
+                    activeOpacity={0.7}
+                  >
+                    <Feather name="log-out" size={14} color="#94A3B8" style={{ marginRight: 6 }} />
+                    <Text style={styles.switchUserBtnText}>Trocar Usuário / Digitar Outro Código</Text>
+                  </TouchableOpacity>
+                </View>
+              </Animated.View>
+            ) : (
+              /* TELA DE AUTENTICAÇÃO (PRE-LOGIN - NO MEIO) */
+              <Animated.View
                 style={[
-                  styles.inputWrapper,
-                  isFocused && styles.inputWrapperFocused,
+                  styles.preLoginContainer,
+                  {
+                    opacity: fadeAnim,
+                    transform: [{ translateY: slideAnim }],
+                  },
                 ]}
               >
-                <TextInput
-                  ref={inputRef}
-                  style={styles.numericTextInput}
-                  value={numericCode}
-                  onChangeText={(text) => {
-                    setNumericCode(text);
-                    setStatusMsg(null);
-                  }}
-                  placeholder="Ex: 123456"
-                  placeholderTextColor="#475569"
-                  keyboardType="number-pad"
-                  maxLength={10}
-                  autoFocus={true}
-                  editable={!isLoading}
-                  onFocus={() => setIsFocused(true)}
-                  onBlur={() => setIsFocused(false)}
-                  returnKeyType="done"
-                  onSubmitEditing={() => handleValidateCode()}
-                />
-
-                {numericCode.length > 0 && (
-                  <TouchableOpacity
-                    onPress={() => {
-                      setNumericCode('');
-                      setStatusMsg(null);
-                    }}
-                    style={styles.clearBtn}
-                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                  >
-                    <Feather name="x" size={16} color="#94A3B8" />
-                  </TouchableOpacity>
-                )}
-              </View>
-
-              {/* FEEDBACK / STATUS MSG */}
-              {isLoading ? (
-                <View style={styles.statusRow}>
-                  <ActivityIndicator size="small" color="#38BDF8" />
-                  <Text style={styles.statusLoadingText}>Autenticando no SGP...</Text>
+                {/* LABEL EXTERNO */}
+                <View style={styles.inputLabelContainer}>
+                  <Text style={styles.inputLabelText}>Digite o código</Text>
                 </View>
-              ) : statusMsg ? (
+
+                {/* CAMPO DE ENTRADA NUMÉRICA */}
                 <View
                   style={[
-                    styles.statusBanner,
-                    statusMsg.type === 'error'
-                      ? styles.statusBannerError
-                      : statusMsg.type === 'success'
-                      ? styles.statusBannerSuccess
-                      : styles.statusBannerInfo,
+                    styles.inputWrapper,
+                    isFocused && styles.inputWrapperFocused,
                   ]}
                 >
-                  <Feather
-                    name={
-                      statusMsg.type === 'error'
-                        ? 'alert-circle'
-                        : statusMsg.type === 'success'
-                        ? 'check-circle'
-                        : 'info'
-                    }
-                    size={15}
-                    color={
-                      statusMsg.type === 'error'
-                        ? '#EF4444'
-                        : statusMsg.type === 'success'
-                        ? '#10B981'
-                        : '#38BDF8'
-                    }
-                    style={{ marginRight: 6 }}
+                  <TextInput
+                    ref={inputRef}
+                    style={styles.numericTextInput}
+                    value={numericCode}
+                    onChangeText={(text) => {
+                      setNumericCode(text);
+                      setStatusMsg(null);
+                    }}
+                    placeholder="Ex: 123456"
+                    placeholderTextColor="#475569"
+                    keyboardType="number-pad"
+                    maxLength={10}
+                    autoFocus={true}
+                    editable={!isLoading}
+                    onFocus={() => setIsFocused(true)}
+                    onBlur={() => setIsFocused(false)}
+                    returnKeyType="done"
+                    onSubmitEditing={() => handleValidateCode()}
                   />
-                  <Text
+
+                  {numericCode.length > 0 && (
+                    <TouchableOpacity
+                      onPress={() => {
+                        setNumericCode('');
+                        setStatusMsg(null);
+                      }}
+                      style={styles.clearBtn}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    >
+                      <Feather name="x" size={16} color="#94A3B8" />
+                    </TouchableOpacity>
+                  )}
+                </View>
+
+                {/* FEEDBACK / STATUS MSG */}
+                {isLoading ? (
+                  <View style={styles.statusRow}>
+                    <ActivityIndicator size="small" color="#38BDF8" />
+                    <Text style={styles.statusLoadingText}>Autenticando no SGP...</Text>
+                  </View>
+                ) : statusMsg ? (
+                  <View
                     style={[
-                      styles.statusBannerText,
+                      styles.statusBanner,
                       statusMsg.type === 'error'
-                        ? { color: '#FCA5A5' }
+                        ? styles.statusBannerError
                         : statusMsg.type === 'success'
-                        ? { color: '#86EFAC' }
-                        : { color: '#BAE6FD' },
+                        ? styles.statusBannerSuccess
+                        : styles.statusBannerInfo,
                     ]}
                   >
-                    {statusMsg.text}
-                  </Text>
-                </View>
-              ) : null}
+                    <Feather
+                      name={
+                        statusMsg.type === 'error'
+                          ? 'alert-circle'
+                          : statusMsg.type === 'success'
+                          ? 'check-circle'
+                          : 'info'
+                      }
+                      size={15}
+                      color={
+                        statusMsg.type === 'error'
+                          ? '#EF4444'
+                          : statusMsg.type === 'success'
+                          ? '#10B981'
+                          : '#38BDF8'
+                      }
+                      style={{ marginRight: 6 }}
+                    />
+                    <Text
+                      style={[
+                        styles.statusBannerText,
+                        statusMsg.type === 'error'
+                          ? { color: '#FCA5A5' }
+                          : statusMsg.type === 'success'
+                          ? { color: '#86EFAC' }
+                          : { color: '#BAE6FD' },
+                      ]}
+                    >
+                      {statusMsg.text}
+                    </Text>
+                  </View>
+                ) : null}
 
-              {/* BOTÃO SUBMIT */}
-              <TouchableOpacity
-                style={[
-                  styles.authSubmitBtn,
-                  (!numericCode.trim() || isLoading) && styles.authSubmitBtnDisabled,
-                ]}
-                onPress={() => handleValidateCode()}
-                disabled={!numericCode.trim() || isLoading}
-                activeOpacity={0.88}
-              >
-                <Text style={styles.authSubmitBtnText}>ENTRAR NO SISTEMA</Text>
-                <View style={styles.submitArrowCircle}>
-                  <Feather name="arrow-right" size={16} color="#070A11" />
-                </View>
-              </TouchableOpacity>
+                {/* BOTÃO SUBMIT */}
+                <TouchableOpacity
+                  style={[
+                    styles.authSubmitBtn,
+                    (!numericCode.trim() || isLoading) && styles.authSubmitBtnDisabled,
+                  ]}
+                  onPress={() => handleValidateCode()}
+                  disabled={!numericCode.trim() || isLoading}
+                  activeOpacity={0.88}
+                >
+                  <Text style={styles.authSubmitBtnText}>ENTRAR NO SISTEMA</Text>
+                  <View style={styles.submitArrowCircle}>
+                    <Feather name="arrow-right" size={16} color="#070A11" />
+                  </View>
+                </TouchableOpacity>
+              </Animated.View>
+            )}
+          </View>
 
-              {/* FOOTER DE SEGURANÇA */}
-              <View style={styles.securityFooter}>
-                <Feather name="lock" size={12} color="#10B981" style={{ marginRight: 6 }} />
-                <Text style={styles.securityFooterText}>
-                  Conexão Segura • SGP Integrado em Tempo Real
-                </Text>
-              </View>
-            </Animated.View>
-          )}
+          {/* BAIXO: CONEXÃO SEGURA */}
+          <Animated.View style={[styles.bottomSection, { opacity: fadeAnim }]}>
+            <View style={styles.securityFooter}>
+              <Feather name="lock" size={13} color="#10B981" style={{ marginRight: 6 }} />
+              <Text style={styles.securityFooterText}>
+                Conexão Segura • SGP Integrado em Tempo Real
+              </Text>
+            </View>
+          </Animated.View>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -421,24 +426,28 @@ const styles = StyleSheet.create({
     backgroundColor: '#070A11',
     paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight || 0 : 0,
   },
+  keyboardContainer: {
+    flex: 1,
+  },
   scrollContent: {
-    paddingHorizontal: 24,
-    paddingVertical: 30,
+    flexGrow: 1,
+    justifyContent: 'space-between',
     alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: '100%',
+    paddingHorizontal: 24,
+    paddingTop: Platform.OS === 'ios' ? 16 : 24,
+    paddingBottom: Platform.OS === 'ios' ? 20 : 28,
   },
 
-  // HEADER & LOGO
+  // TOPO: HEADER & LOGO
   headerSection: {
     alignItems: 'center',
-    marginBottom: 36,
     width: '100%',
+    paddingTop: 8,
   },
   logoImage: {
     width: 250,
     height: 75,
-    marginBottom: 12,
+    marginBottom: 10,
   },
   systemStatusPill: {
     flexDirection: 'row',
@@ -464,7 +473,16 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
 
-  // PRE-LOGIN (SEM CARD: INPUT DIRETO + BOTÃO + CONEXÃO SEGURA)
+  // MEIO: CENTRO DA TELA
+  centerSection: {
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flex: 1,
+    marginVertical: 24,
+  },
+
+  // PRE-LOGIN (CAMPO + BOTÃO)
   preLoginContainer: {
     width: '100%',
     maxWidth: 360,
@@ -579,7 +597,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.35,
     shadowRadius: 12,
     elevation: 6,
-    marginBottom: 24,
   },
   authSubmitBtnDisabled: {
     opacity: 0.45,
@@ -600,6 +617,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+
+  // BAIXO: FOOTER DE SEGURANÇA
+  bottomSection: {
+    width: '100%',
+    alignItems: 'center',
+    paddingBottom: 8,
+  },
   securityFooter: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -607,7 +631,7 @@ const styles = StyleSheet.create({
   },
   securityFooterText: {
     color: '#64748B',
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '500',
   },
 
