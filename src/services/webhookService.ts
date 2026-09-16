@@ -410,7 +410,22 @@ export const sendAttendanceWebhook = async (
     const techLat = extra?.latitude;
     const techLng = extra?.longitude;
     const coordsStr = extra?.coordsFormatted || (techLat && techLng ? `${techLat},${techLng}` : undefined);
-    const n8nTrackingUrl = `https://n8n.zentos.com.br/webhook/rastrear-tecnico?os=${osId}`;
+    
+    const clientCoordsRaw = chamado?.contrato_endereco_ll;
+    let clatParam = '';
+    let clngParam = '';
+    if (clientCoordsRaw) {
+      const cParts = clientCoordsRaw.split(',');
+      if (cParts.length === 2) {
+        clatParam = `&clat=${cParts[0].trim()}`;
+        clngParam = `&clng=${cParts[1].trim()}`;
+      }
+    }
+
+    const tlatParam = techLat ? `&tlat=${techLat}` : '';
+    const tlngParam = techLng ? `&tlng=${techLng}` : '';
+
+    const n8nTrackingUrl = `https://n8n.zentos.com.br/webhook/rastrear-tecnico?os=${osId}${tlatParam}${tlngParam}${clatParam}${clngParam}`;
     const trackingLinkStr = (extra?.linkTracking && !extra.linkTracking.includes('google.com'))
       ? extra.linkTracking
       : n8nTrackingUrl;
