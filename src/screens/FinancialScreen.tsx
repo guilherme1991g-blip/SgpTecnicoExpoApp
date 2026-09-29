@@ -1320,10 +1320,6 @@ export const FinancialScreen: React.FC<Props> = ({
                 <Text style={styles.drawerProfileName} numberOfLines={1}>
                   {loggedUser || 'Técnico de Campo'}
                 </Text>
-                <View style={styles.drawerStatusRow}>
-                  <View style={styles.drawerStatusDot} />
-                  <Text style={styles.drawerStatusText}>Online • Em Campo</Text>
-                </View>
               </View>
             </View>
 
