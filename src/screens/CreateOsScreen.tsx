@@ -610,7 +610,6 @@ export const CreateOsScreen: React.FC<Props> = ({
                   <Text style={[styles.menuItemText, { color: '#818CF8', fontWeight: '700' }]}>
                     Abrir Nova OS
                   </Text>
-                  <Text style={styles.menuItemSubText}>Abertura rápida de chamado</Text>
                 </View>
                 <Feather name="chevron-right" size={16} color="#818CF8" />
               </TouchableOpacity>
@@ -629,7 +628,6 @@ export const CreateOsScreen: React.FC<Props> = ({
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.menuItemText}>Ordens de Serviço</Text>
-                  <Text style={styles.menuItemSubText}>Agenda de chamados</Text>
                 </View>
                 <Feather name="chevron-right" size={16} color="#475569" />
               </TouchableOpacity>
@@ -648,7 +646,6 @@ export const CreateOsScreen: React.FC<Props> = ({
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.menuItemText}>Buscar Clientes</Text>
-                  <Text style={styles.menuItemSubText}>Consulta por nome/CPF</Text>
                 </View>
                 <Feather name="chevron-right" size={16} color="#475569" />
               </TouchableOpacity>
@@ -667,7 +664,6 @@ export const CreateOsScreen: React.FC<Props> = ({
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.menuItemText}>Clientes Offline</Text>
-                  <Text style={styles.menuItemSubText}>Mapa e lista por bairro</Text>
                 </View>
                 <Feather name="chevron-right" size={16} color="#475569" />
               </TouchableOpacity>
@@ -689,7 +685,6 @@ export const CreateOsScreen: React.FC<Props> = ({
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.menuItemText}>Autorizar ONU</Text>
-                  <Text style={styles.menuItemSubText}>Provisionamento na OLT</Text>
                 </View>
                 <Feather name="chevron-right" size={16} color="#475569" />
               </TouchableOpacity>
@@ -708,7 +703,6 @@ export const CreateOsScreen: React.FC<Props> = ({
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.menuItemText}>Consulta de ONU</Text>
-                  <Text style={styles.menuItemSubText}>Listar OLTs e portas PON</Text>
                 </View>
                 <Feather name="chevron-right" size={16} color="#475569" />
               </TouchableOpacity>
@@ -730,7 +724,6 @@ export const CreateOsScreen: React.FC<Props> = ({
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.menuItemText}>Financeiro</Text>
-                  <Text style={styles.menuItemSubText}>Despesas e abastecimento</Text>
                 </View>
                 <Feather name="chevron-right" size={16} color="#475569" />
               </TouchableOpacity>
