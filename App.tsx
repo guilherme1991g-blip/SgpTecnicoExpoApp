@@ -16,7 +16,6 @@ import { AuthorizeOnuScreen } from './src/screens/AuthorizeOnuScreen';
 import { OltConsultationScreen } from './src/screens/OltConsultationScreen';
 import { FacialLoginScreen } from './src/screens/FacialLoginScreen';
 import { CreateOsScreen } from './src/screens/CreateOsScreen';
-import { FinancialScreen } from './src/screens/FinancialScreen';
 import { ChamadoItem } from './src/types/sgp';
 
 export type RootStackParamList = {
@@ -24,7 +23,6 @@ export type RootStackParamList = {
   FacialLogin: undefined;
   OsList: undefined;
   CreateOs: undefined;
-  Financial: undefined;
   OsDetail: { chamado: ChamadoItem };
   OsClose: { osId: number; chamado?: ChamadoItem };
   ClientSearch: undefined;
@@ -214,21 +212,6 @@ export default function App() {
                   onOpenOfflineClients={() => navigation.navigate('OfflineClients')}
                   onOpenAuthorizeOnu={() => navigation.navigate('AuthorizeOnu')}
                   onOpenOltConsultation={() => navigation.navigate('OltConsultation')}
-                  onOpenFinancial={() => navigation.navigate('Financial')}
-                  onLogout={() => navigation.replace('FacialLogin')}
-                />
-              )}
-            </Stack.Screen>
-
-            <Stack.Screen name="Financial">
-              {({ navigation }) => (
-                <FinancialScreen
-                  onBackToOsList={() => navigation.navigate('OsList')}
-                  onOpenCreateOs={() => navigation.navigate('CreateOs')}
-                  onOpenClientSearch={() => navigation.navigate('ClientSearch')}
-                  onOpenOfflineClients={() => navigation.navigate('OfflineClients')}
-                  onOpenAuthorizeOnu={() => navigation.navigate('AuthorizeOnu')}
-                  onOpenOltConsultation={() => navigation.navigate('OltConsultation')}
                   onLogout={() => navigation.replace('FacialLogin')}
                 />
               )}
@@ -243,7 +226,6 @@ export default function App() {
                   onOpenOfflineClients={() => navigation.navigate('OfflineClients')}
                   onOpenAuthorizeOnu={() => navigation.navigate('AuthorizeOnu')}
                   onOpenOltConsultation={() => navigation.navigate('OltConsultation')}
-                  onOpenFinancial={() => navigation.navigate('Financial')}
                   onLogout={() => navigation.replace('FacialLogin')}
                 />
               )}

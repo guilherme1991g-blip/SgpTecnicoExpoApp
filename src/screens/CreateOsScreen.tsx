@@ -39,7 +39,6 @@ interface Props {
   onOpenOfflineClients: () => void;
   onOpenAuthorizeOnu: () => void;
   onOpenOltConsultation: () => void;
-  onOpenFinancial?: () => void;
   onLogout: () => void;
 }
 
@@ -49,7 +48,6 @@ export const CreateOsScreen: React.FC<Props> = ({
   onOpenOfflineClients,
   onOpenAuthorizeOnu,
   onOpenOltConsultation,
-  onOpenFinancial,
   onLogout,
 }) => {
   const insets = useSafeAreaInsets();
@@ -703,27 +701,6 @@ export const CreateOsScreen: React.FC<Props> = ({
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.menuItemText}>Consulta de ONU</Text>
-                </View>
-                <Feather name="chevron-right" size={16} color="#475569" />
-              </TouchableOpacity>
-
-              {/* SECTION: GESTÃO */}
-              <Text style={styles.drawerSectionLabel}>GESTÃO & DESPESAS</Text>
-
-              {/* ITEM 7: FINANCEIRO */}
-              <TouchableOpacity
-                style={styles.menuItemRow}
-                onPress={() => {
-                  setIsMenuOpen(false);
-                  if (onOpenFinancial) onOpenFinancial();
-                }}
-                activeOpacity={0.75}
-              >
-                <View style={[styles.menuItemIconCircle, { backgroundColor: 'rgba(16, 185, 129, 0.15)' }]}>
-                  <Feather name="dollar-sign" size={18} color="#10B981" />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.menuItemText}>Financeiro</Text>
                 </View>
                 <Feather name="chevron-right" size={16} color="#475569" />
               </TouchableOpacity>
