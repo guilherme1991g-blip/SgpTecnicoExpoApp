@@ -212,7 +212,13 @@ export default function App() {
                   onOpenOfflineClients={() => navigation.navigate('OfflineClients')}
                   onOpenAuthorizeOnu={() => navigation.navigate('AuthorizeOnu')}
                   onOpenOltConsultation={() => navigation.navigate('OltConsultation')}
-                  onLogout={() => navigation.replace('FacialLogin')}
+                  onLogout={async () => {
+                    await logoutLoggedTecnico();
+                    navigation.reset({
+                      index: 0,
+                      routes: [{ name: 'FacialLogin' }],
+                    });
+                  }}
                 />
               )}
             </Stack.Screen>
@@ -226,7 +232,13 @@ export default function App() {
                   onOpenOfflineClients={() => navigation.navigate('OfflineClients')}
                   onOpenAuthorizeOnu={() => navigation.navigate('AuthorizeOnu')}
                   onOpenOltConsultation={() => navigation.navigate('OltConsultation')}
-                  onLogout={() => navigation.replace('FacialLogin')}
+                  onLogout={async () => {
+                    await logoutLoggedTecnico();
+                    navigation.reset({
+                      index: 0,
+                      routes: [{ name: 'FacialLogin' }],
+                    });
+                  }}
                 />
               )}
             </Stack.Screen>
