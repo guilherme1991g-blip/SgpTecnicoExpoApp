@@ -16,12 +16,20 @@ import {
   Animated,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   verifyNumericCodeSgp,
   getLoggedTecnicoName,
+  setLoggedTecnicoName,
   getLoggedUserRole,
+  setLoggedUserRole,
   logoutLoggedTecnico,
 } from '../services/webhookService';
+import {
+  authenticateWithSupabase,
+  getSavedCompanyCode,
+  setSavedCompanyCode,
+} from '../services/multiTenantService';
 
 interface Props {
   onLoginSuccess: (tecnicoNome: string, userRole?: string) => void;
@@ -29,17 +37,21 @@ interface Props {
 }
 
 export const FacialLoginScreen: React.FC<Props> = ({ onLoginSuccess }) => {
-  const [numericCode, setNumericCode] = useState('');
+  const [companyCode, setCompanyCode] = useState('');
+  const [employeeCode, setEmployeeCode] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [keepLoggedIn, setKeepLoggedIn] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   const [loggedTecnico, setLoggedTecnico] = useState<string | null>(null);
   const [loggedRole, setLoggedRole] = useState<string>('tecnico');
   const [statusMsg, setStatusMsg] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
-  const [isFocused, setIsFocused] = useState(false);
+  const [isCompanyFocused, setIsCompanyFocused] = useState(false);
+  const [isEmployeeFocused, setIsEmployeeFocused] = useState(false);
 
   // Smooth appearance animation
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(15)).current;
-  const inputRef = useRef<TextInput>(null);
+  const employeeInputRef = useRef<TextInput>(null);
 
   useEffect(() => {
     checkExistingLogin();
@@ -59,11 +71,25 @@ export const FacialLoginScreen: React.FC<Props> = ({ onLoginSuccess }) => {
   }, []);
 
   const checkExistingLogin = async () => {
+    const keep = await AsyncStorage.getItem('@keep_logged_in');
+    const savedCompany = await getSavedCompanyCode();
+
+    if (savedCompany) {
+      setCompanyCode(savedCompany);
+    }
+
+    if (keep === 'false') {
+      return;
+    }
+
     const savedName = await getLoggedTecnicoName();
     const savedRole = await getLoggedUserRole();
+
     if (savedName) {
       setLoggedTecnico(savedName);
       setLoggedRole(savedRole || 'tecnico');
+      // Direto para o sistema se "Manter conectado" estiver ativo
+      onLoginSuccess(savedName, savedRole || 'tecnico');
     }
   };
 
@@ -82,45 +108,71 @@ export const FacialLoginScreen: React.FC<Props> = ({ onLoginSuccess }) => {
   };
 
   const handleValidateCode = async () => {
-    const code = numericCode.trim();
-    if (!code) {
-      Alert.alert('Código Obrigatório', 'Por favor, digite seu código numérico de acesso.');
+    const company = companyCode.trim().toUpperCase();
+    const pass = employeeCode.trim();
+
+    if (!company) {
+      setStatusMsg({ text: 'Por favor, informe o código da empresa.', type: 'error' });
+      return;
+    }
+
+    if (!pass) {
+      setStatusMsg({ text: 'Por favor, digite o código do colaborador.', type: 'error' });
       return;
     }
 
     setIsLoading(true);
-    setStatusMsg({ text: 'Validando credenciais no SGP...', type: 'info' });
+    setStatusMsg({ text: 'Carregando...', type: 'info' });
 
     try {
-      const res = await verifyNumericCodeSgp(code);
-      setIsLoading(false);
+      // 1. Tenta autenticação via Supabase Multi-Tenant (Empresa + Funcionário)
+      const resSupabase = await authenticateWithSupabase(company, pass);
 
-      if (res.sucesso && (res.tecnico || res.nome)) {
-        const nomeTecnico = res.tecnico || res.nome || `Usuário (${code})`;
-        const userRole = res.role || 'tecnico';
+      if (resSupabase.sucesso && resSupabase.session) {
+        setIsLoading(false);
+        const nomeTecnico = resSupabase.session.tecnicoNome || `Usuário (${pass})`;
+        const userRole = resSupabase.session.tecnicoRole || 'tecnico';
+        
+        await setSavedCompanyCode(company);
+        await setLoggedTecnicoName(nomeTecnico);
+        await setLoggedUserRole(userRole);
+        await AsyncStorage.setItem('@keep_logged_in', keepLoggedIn ? 'true' : 'false');
+
         setLoggedTecnico(nomeTecnico);
         setLoggedRole(userRole);
-        setStatusMsg({ text: 'Autenticação autorizada com sucesso!', type: 'success' });
+        setStatusMsg({ text: 'Autenticação autorizada!', type: 'success' });
 
-        Alert.alert(
-          'Acesso Liberado!',
-          `Código validado com sucesso.\nBem-vindo(a), ${nomeTecnico}!`,
-          [
-            {
-              text: 'Entrar no Sistema',
-              onPress: () => onLoginSuccess(nomeTecnico, userRole),
-            },
-          ]
-        );
+        // VAI DIRETO PARA O SISTEMA SEM DIÁLOGO OU TELA INTERMEDIÁRIA
+        onLoginSuccess(nomeTecnico, userRole);
+        return;
+      }
+
+      // 2. Se não encontrou no Supabase, tenta fallback via Webhook SGP
+      const resWebhook = await verifyNumericCodeSgp(pass);
+      setIsLoading(false);
+
+      if (resWebhook.sucesso && (resWebhook.tecnico || resWebhook.nome)) {
+        const nomeTecnico = resWebhook.tecnico || resWebhook.nome || `Usuário (${pass})`;
+        const userRole = resWebhook.role || 'tecnico';
+        
+        await setSavedCompanyCode(company);
+        await setLoggedTecnicoName(nomeTecnico);
+        await setLoggedUserRole(userRole);
+        await AsyncStorage.setItem('@keep_logged_in', keepLoggedIn ? 'true' : 'false');
+
+        setLoggedTecnico(nomeTecnico);
+        setLoggedRole(userRole);
+        setStatusMsg({ text: 'Autenticação autorizada!', type: 'success' });
+
+        // VAI DIRETO PARA O SISTEMA SEM DIÁLOGO OU TELA INTERMEDIÁRIA
+        onLoginSuccess(nomeTecnico, userRole);
       } else {
-        const msg = res.mensagem || 'Código numérico não autorizado.';
+        const msg = resSupabase.mensagem || resWebhook.mensagem || 'Empresa ou código de colaborador incorreto.';
         setStatusMsg({ text: msg, type: 'error' });
-        Alert.alert('Não Autorizado', msg, [{ text: 'Tentar Novamente' }]);
       }
     } catch (e: any) {
       setIsLoading(false);
       setStatusMsg({ text: 'Falha de conexão com o servidor.', type: 'error' });
-      Alert.alert('Erro de Conexão', 'Falha ao conectar com o serviço de autenticação SGP.');
     }
   };
 
@@ -137,7 +189,7 @@ export const FacialLoginScreen: React.FC<Props> = ({ onLoginSuccess }) => {
             await logoutLoggedTecnico();
             setLoggedTecnico(null);
             setLoggedRole('tecnico');
-            setNumericCode('');
+            setEmployeeCode('');
             setStatusMsg(null);
           },
         },
@@ -175,157 +227,50 @@ export const FacialLoginScreen: React.FC<Props> = ({ onLoginSuccess }) => {
               resizeMode="contain"
             />
 
-            {/* STATUS RIBBON */}
-            <View style={styles.systemStatusPill}>
-              <View style={styles.statusLiveDot} />
-              <Text style={styles.systemStatusText}>SGP INTEGRATION ONLINE</Text>
-            </View>
           </Animated.View>
 
-          {/* MEIO: FORMULÁRIO OU SESSÃO ATIVA */}
+          {/* MEIO: FORMULÁRIO DE LOGIN */}
           <View style={styles.centerSection}>
-            {loggedTecnico ? (
-              <Animated.View
-                style={[
-                  styles.postLoginContainer,
-                  {
-                    opacity: fadeAnim,
-                    transform: [{ translateY: slideAnim }],
-                  },
-                ]}
-              >
-                {/* CARD PRINCIPAL DO TÉCNICO AUTENTICADO */}
-                <View style={styles.technicianCard}>
-                  {/* AVATAR COM BADGE */}
-                  <View style={styles.avatarWrapper}>
-                    <View style={styles.avatarCircle}>
-                      <Text style={styles.avatarInitials}>{getInitials(loggedTecnico)}</Text>
-                    </View>
-                    <View style={styles.avatarVerifiedBadge}>
-                      <Feather name="check" size={13} color="#FFFFFF" />
-                    </View>
-                  </View>
-
-                  {/* SAUDAÇÃO & NOME */}
-                  <Text style={styles.greetingText}>{getGreeting()},</Text>
-                  <Text style={styles.technicianName} numberOfLines={2}>
-                    {loggedTecnico}
-                  </Text>
-
-                  {/* CARGO & STATUS */}
-                  <View style={styles.roleBadgeContainer}>
-                    <View style={styles.rolePill}>
-                      <Feather
-                        name={loggedRole.includes('atend') ? 'headphones' : 'tool'}
-                        size={13}
-                        color="#38BDF8"
-                        style={{ marginRight: 6 }}
-                      />
-                      <Text style={styles.rolePillText}>
-                        {loggedRole.includes('atend') ? 'Atendimento / Suporte' : 'Técnico de Campo'}
-                      </Text>
-                    </View>
-
-                    <View style={styles.connectedPill}>
-                      <View style={styles.connectedDot} />
-                      <Text style={styles.connectedPillText}>Sessão Ativa</Text>
-                    </View>
-                  </View>
-
-                  {/* DIVISOR */}
-                  <View style={styles.cardDivider} />
-
-                  {/* INFO CARDS RÁPIDOS */}
-                  <View style={styles.quickInfoGrid}>
-                    <View style={styles.quickInfoItem}>
-                      <Feather name="shield" size={16} color="#818CF8" />
-                      <Text style={styles.quickInfoLabel}>Segurança</Text>
-                      <Text style={styles.quickInfoValue}>Autenticado</Text>
-                    </View>
-                    <View style={styles.quickInfoItem}>
-                      <Feather name="zap" size={16} color="#38BDF8" />
-                      <Text style={styles.quickInfoLabel}>Sincronia</Text>
-                      <Text style={styles.quickInfoValue}>Tempo Real</Text>
-                    </View>
-                    <View style={styles.quickInfoItem}>
-                      <Feather name="map-pin" size={16} color="#10B981" />
-                      <Text style={styles.quickInfoLabel}>GPS Live</Text>
-                      <Text style={styles.quickInfoValue}>Habilitado</Text>
-                    </View>
-                  </View>
-
-                  {/* BOTÃO PRINCIPAL DE ACESSO */}
-                  <TouchableOpacity
-                    style={styles.primaryLaunchBtn}
-                    onPress={() => onLoginSuccess(loggedTecnico, loggedRole)}
-                    activeOpacity={0.88}
-                  >
-                    <View style={styles.primaryLaunchBtnContent}>
-                      <Text style={styles.primaryLaunchBtnText}>ACESSAR SISTEMA</Text>
-                      <View style={styles.primaryLaunchIconCircle}>
-                        <Feather name="arrow-right" size={18} color="#070A11" />
-                      </View>
-                    </View>
-                  </TouchableOpacity>
-
-                  {/* BOTÃO DE TROCA DE USUÁRIO */}
-                  <TouchableOpacity
-                    style={styles.switchUserBtn}
-                    onPress={handleLogout}
-                    activeOpacity={0.7}
-                  >
-                    <Feather name="log-out" size={14} color="#94A3B8" style={{ marginRight: 6 }} />
-                    <Text style={styles.switchUserBtnText}>Trocar Usuário / Digitar Outro Código</Text>
-                  </TouchableOpacity>
-                </View>
-              </Animated.View>
-            ) : (
-              /* TELA DE AUTENTICAÇÃO (PRE-LOGIN - NO MEIO) */
-              <Animated.View
-                style={[
-                  styles.preLoginContainer,
-                  {
-                    opacity: fadeAnim,
-                    transform: [{ translateY: slideAnim }],
-                  },
-                ]}
-              >
-                {/* LABEL EXTERNO */}
+            <Animated.View
+              style={[
+                styles.preLoginContainer,
+                {
+                  opacity: fadeAnim,
+                  transform: [{ translateY: slideAnim }],
+                },
+              ]}
+            >
+                {/* 1. CAMPO CÓDIGO DA EMPRESA */}
                 <View style={styles.inputLabelContainer}>
-                  <Text style={styles.inputLabelText}>Digite o código</Text>
+                  <Text style={styles.inputLabelText}>Código da Empresa</Text>
                 </View>
-
-                {/* CAMPO DE ENTRADA NUMÉRICA */}
                 <View
                   style={[
                     styles.inputWrapper,
-                    isFocused && styles.inputWrapperFocused,
+                    isCompanyFocused && styles.inputWrapperFocused,
                   ]}
                 >
+                  <Feather name="briefcase" size={18} color={isCompanyFocused ? "#38BDF8" : "#64748B"} style={{ marginRight: 10 }} />
                   <TextInput
-                    ref={inputRef}
                     style={styles.numericTextInput}
-                    value={numericCode}
+                    value={companyCode}
                     onChangeText={(text) => {
-                      setNumericCode(text);
+                      setCompanyCode(text.toUpperCase());
                       setStatusMsg(null);
                     }}
-                    placeholder="Ex: 123456"
+                    placeholder=""
                     placeholderTextColor="#475569"
-                    keyboardType="number-pad"
-                    maxLength={10}
-                    autoFocus={true}
+                    autoCapitalize="characters"
                     editable={!isLoading}
-                    onFocus={() => setIsFocused(true)}
-                    onBlur={() => setIsFocused(false)}
-                    returnKeyType="done"
-                    onSubmitEditing={() => handleValidateCode()}
+                    onFocus={() => setIsCompanyFocused(true)}
+                    onBlur={() => setIsCompanyFocused(false)}
+                    returnKeyType="next"
+                    onSubmitEditing={() => employeeInputRef.current?.focus()}
                   />
-
-                  {numericCode.length > 0 && (
+                  {companyCode.length > 0 && (
                     <TouchableOpacity
                       onPress={() => {
-                        setNumericCode('');
+                        setCompanyCode('');
                         setStatusMsg(null);
                       }}
                       style={styles.clearBtn}
@@ -336,11 +281,63 @@ export const FacialLoginScreen: React.FC<Props> = ({ onLoginSuccess }) => {
                   )}
                 </View>
 
+                {/* 2. CAMPO CÓDIGO DO COLABORADOR */}
+                <View style={[styles.inputLabelContainer, { marginTop: 14 }]}>
+                  <Text style={styles.inputLabelText}>Código do Colaborador</Text>
+                </View>
+                <View
+                  style={[
+                    styles.inputWrapper,
+                    isEmployeeFocused && styles.inputWrapperFocused,
+                  ]}
+                >
+                  <Feather name="lock" size={18} color={isEmployeeFocused ? "#38BDF8" : "#64748B"} style={{ marginRight: 10 }} />
+                  <TextInput
+                    ref={employeeInputRef}
+                    style={styles.numericTextInput}
+                    value={employeeCode}
+                    onChangeText={(text) => {
+                      setEmployeeCode(text);
+                      setStatusMsg(null);
+                    }}
+                    placeholder=""
+                    placeholderTextColor="#475569"
+                    secureTextEntry={!showPassword}
+                    editable={!isLoading}
+                    onFocus={() => setIsEmployeeFocused(true)}
+                    onBlur={() => setIsEmployeeFocused(false)}
+                    returnKeyType="done"
+                    onSubmitEditing={() => handleValidateCode()}
+                  />
+                  <TouchableOpacity
+                    onPress={() => setShowPassword(!showPassword)}
+                    style={styles.clearBtn}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  >
+                    <Feather name={showPassword ? 'eye-off' : 'eye'} size={18} color={isEmployeeFocused ? "#38BDF8" : "#94A3B8"} />
+                  </TouchableOpacity>
+                </View>
+
+                {/* CAIXINHA MANTER CONECTADO */}
+                <TouchableOpacity
+                  style={styles.keepLoggedInRow}
+                  onPress={() => setKeepLoggedIn(!keepLoggedIn)}
+                  activeOpacity={0.7}
+                >
+                  <Feather
+                    name={keepLoggedIn ? "check-square" : "square"}
+                    size={18}
+                    color={keepLoggedIn ? "#38BDF8" : "#64748B"}
+                    style={{ marginRight: 8 }}
+                  />
+                  <Text style={styles.keepLoggedInText}>Manter conectado</Text>
+                </TouchableOpacity>
+
                 {/* FEEDBACK / STATUS MSG */}
                 {isLoading ? (
                   <View style={styles.statusRow}>
                     <ActivityIndicator size="small" color="#38BDF8" />
-                    <Text style={styles.statusLoadingText}>Autenticando no SGP...</Text>
+                    <Text style={styles.statusLoadingText}>Carregando...</Text>
                   </View>
                 ) : statusMsg ? (
                   <View
@@ -390,19 +387,18 @@ export const FacialLoginScreen: React.FC<Props> = ({ onLoginSuccess }) => {
                 <TouchableOpacity
                   style={[
                     styles.authSubmitBtn,
-                    (!numericCode.trim() || isLoading) && styles.authSubmitBtnDisabled,
+                    (!companyCode.trim() || !employeeCode.trim() || isLoading) && styles.authSubmitBtnDisabled,
                   ]}
                   onPress={() => handleValidateCode()}
-                  disabled={!numericCode.trim() || isLoading}
+                  disabled={!companyCode.trim() || !employeeCode.trim() || isLoading}
                   activeOpacity={0.88}
                 >
-                  <Text style={styles.authSubmitBtnText}>ENTRAR NO SISTEMA</Text>
+                  <Text style={styles.authSubmitBtnText}>Entrar</Text>
                   <View style={styles.submitArrowCircle}>
                     <Feather name="arrow-right" size={16} color="#070A11" />
                   </View>
                 </TouchableOpacity>
               </Animated.View>
-            )}
           </View>
 
           {/* BAIXO: CONEXÃO SEGURA */}
@@ -410,7 +406,7 @@ export const FacialLoginScreen: React.FC<Props> = ({ onLoginSuccess }) => {
             <View style={styles.securityFooter}>
               <Feather name="lock" size={13} color="#10B981" style={{ marginRight: 6 }} />
               <Text style={styles.securityFooterText}>
-                Conexão Segura • SGP Integrado em Tempo Real
+                Conexão Segura
               </Text>
             </View>
           </Animated.View>
@@ -537,6 +533,21 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginLeft: 6,
+  },
+
+  // MANTER CONECTADO CHECKBOX
+  keepLoggedInRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+    marginTop: 4,
+    marginBottom: 16,
+    paddingHorizontal: 4,
+  },
+  keepLoggedInText: {
+    color: '#94A3B8',
+    fontSize: 13,
+    fontWeight: '600',
   },
 
   // STATUS BANNER

@@ -1,8 +1,10 @@
-import React, { Component, ErrorInfo, ReactNode } from 'react';
-import { View, Text, StyleSheet, StatusBar, TouchableOpacity } from 'react-native';
-import { NavigationContainer } from '@react-navigation/native';
+import React, { Component, ErrorInfo, ReactNode, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, StatusBar, TouchableOpacity, Alert, AppState, AppStateStatus } from 'react-native';
+import * as Updates from 'expo-updates';
+import { NavigationContainer, useNavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { checkIsSessionRevoked, logoutLoggedTecnico } from './src/services/webhookService';
 
 import { LoginScreen } from './src/screens/LoginScreen';
 import { OsListScreen } from './src/screens/OsListScreen';
@@ -78,12 +80,101 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 }
 
 export default function App() {
+  const isCheckingUpdateRef = useRef(false);
+  const navigationRef = useNavigationContainerRef();
+
+  useEffect(() => {
+    // Função para verificar se a sessão foi derrubada pelo painel administrativo
+    const checkSession = async () => {
+      try {
+        const isRevoked = await checkIsSessionRevoked();
+        if (isRevoked) {
+          await logoutLoggedTecnico();
+          Alert.alert(
+            '⚠️ Sessão Encerrada',
+            'Sua sessão foi derrubada pelo administrador no painel web. Faça login novamente.',
+            [
+              {
+                text: 'OK',
+                onPress: () => {
+                  if (navigationRef.isReady()) {
+                    navigationRef.reset({
+                      index: 0,
+                      routes: [{ name: 'FacialLogin' as never }],
+                    });
+                  }
+                },
+              },
+            ]
+          );
+        }
+      } catch {}
+    };
+
+    // Função para verificar se há atualização no EAS
+    const checkForAppUpdates = async () => {
+      if (__DEV__ || isCheckingUpdateRef.current) return;
+      try {
+        isCheckingUpdateRef.current = true;
+        const update = await Updates.checkForUpdateAsync();
+        if (update.isAvailable) {
+          const fetchResult = await Updates.fetchUpdateAsync();
+          if (fetchResult.isNew) {
+            Alert.alert(
+              '🚀 Atualização Disponível!',
+              'Uma nova versão do Vega Sync com melhorias foi baixada. Deseja reiniciar o aplicativo agora para aplicar?',
+              [
+                { text: 'Mais tarde', style: 'cancel' },
+                {
+                  text: 'Reiniciar Agora',
+                  onPress: async () => {
+                    try {
+                      await Updates.reloadAsync();
+                    } catch (e) {
+                      console.warn('Erro ao recarregar app:', e);
+                    }
+                  },
+                },
+              ]
+            );
+          }
+        }
+      } catch (err) {
+        console.log('[Updates] Sem conexão ou verificação ignorada:', err);
+      } finally {
+        isCheckingUpdateRef.current = false;
+      }
+    };
+
+    // 1. Verifica logo na inicialização
+    checkForAppUpdates();
+    checkSession();
+
+    // 2. Verifica também sempre que o app volta para primeiro plano
+    const subscription = AppState.addEventListener('change', (nextAppState: AppStateStatus) => {
+      if (nextAppState === 'active') {
+        checkForAppUpdates();
+        checkSession();
+      }
+    });
+
+    // 3. Monitora em intervalo de segundo plano a cada 15 segundos
+    const timer = setInterval(() => {
+      checkSession();
+    }, 15000);
+
+    return () => {
+      subscription.remove();
+      clearInterval(timer);
+    };
+  }, []);
+
   return (
     <SafeAreaProvider>
       <ErrorBoundary>
         <View style={styles.container}>
           <StatusBar barStyle="light-content" backgroundColor="#0B0F17" translucent={true} />
-        <NavigationContainer>
+        <NavigationContainer ref={navigationRef}>
           <Stack.Navigator
             initialRouteName="FacialLogin"
             screenOptions={{

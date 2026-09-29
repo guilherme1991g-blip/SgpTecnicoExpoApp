@@ -29,6 +29,7 @@ import {
   fetchPppoeActiveSessionSgp,
 } from '../services/sgpApi';
 import { sendAttendanceWebhook, sendTechnicianLocationTrackingWebhook } from '../services/webhookService';
+import { startBackgroundLocationTracking, stopBackgroundLocationTracking } from '../services/backgroundTrackingTask';
 import { Feather } from '@expo/vector-icons';
 
 interface Props {
@@ -346,6 +347,11 @@ export const OsDetailScreen: React.FC<Props> = ({ chamado, onBack, onCloseOsClic
     let intervalId: any = null;
 
     if (currentOsStatus === 2) {
+      // Inicia rastreamento em segundo plano (background)
+      startBackgroundLocationTracking(numericOsId, chamado).catch((err) =>
+        console.warn('Erro ao iniciar rastreamento em segundo plano:', err)
+      );
+
       const sendCurrentLocation = async () => {
         try {
           const { status } = await Location.requestForegroundPermissionsAsync();
@@ -367,8 +373,10 @@ export const OsDetailScreen: React.FC<Props> = ({ chamado, onBack, onCloseOsClic
       // Dispara o primeiro envio IMEDIATAMENTE ao abrir a tela
       sendCurrentLocation();
 
-      // Configura repetição a cada 20 segundos
-      intervalId = setInterval(sendCurrentLocation, 20000);
+      // Configura repetição a cada 15 segundos enquanto a tela estiver visível
+      intervalId = setInterval(sendCurrentLocation, 15000);
+    } else {
+      stopBackgroundLocationTracking().catch(() => {});
     }
 
     return () => {

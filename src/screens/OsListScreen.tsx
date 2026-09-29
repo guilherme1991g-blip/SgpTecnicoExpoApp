@@ -325,7 +325,7 @@ export const OsListScreen: React.FC<Props> = ({
           <View>
             <Text style={styles.headerTitle}>Agenda de Serviços</Text>
             <Text style={styles.headerSubtitle}>
-              Vega Sync • {filteredChamados.length} chamados
+              {loggedTecnico || 'Técnico'} • {filteredChamados.length} OS
             </Text>
           </View>
         </View>

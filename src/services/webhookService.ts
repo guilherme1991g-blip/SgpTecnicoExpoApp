@@ -111,7 +111,15 @@ export interface FacialVerificationResult {
  */
 export const getLoggedTecnicoName = async (): Promise<string | null> => {
   try {
-    return await AsyncStorage.getItem(LOGGED_TECNICO_KEY);
+    const name = await AsyncStorage.getItem(LOGGED_TECNICO_KEY);
+    if (name) return name;
+
+    const rawTenant = await AsyncStorage.getItem('@vegasync_tenant_session_v2');
+    if (rawTenant) {
+      const parsed = JSON.parse(rawTenant);
+      if (parsed?.tecnicoNome) return parsed.tecnicoNome;
+    }
+    return null;
   } catch {
     return null;
   }
@@ -133,19 +141,106 @@ export const LOGGED_USER_ROLE_KEY = '@logged_user_role';
  */
 export const getLoggedUserRole = async (): Promise<string> => {
   try {
-    return (await AsyncStorage.getItem(LOGGED_USER_ROLE_KEY)) || 'tecnico';
+    const role = await AsyncStorage.getItem(LOGGED_USER_ROLE_KEY);
+    if (role) return role;
+
+    const rawTenant = await AsyncStorage.getItem('@vegasync_tenant_session_v2');
+    if (rawTenant) {
+      const parsed = JSON.parse(rawTenant);
+      if (parsed?.tecnicoRole) return parsed.tecnicoRole;
+    }
+    return 'tecnico';
   } catch {
     return 'tecnico';
   }
 };
 
-/**
- * Salva o cargo do usuário na sessão (atendente vs tecnico)
- */
 export const setLoggedUserRole = async (role: string): Promise<void> => {
   try {
     await AsyncStorage.setItem(LOGGED_USER_ROLE_KEY, role);
   } catch {}
+};
+
+const TENANT_SESSION_STORAGE_KEY = '@vegasync_tenant_session_v2';
+
+/**
+ * Obtém as URLs customizadas de Webhook da Empresa logada atualmente (Multi-Tenant)
+ */
+export const getTenantWebhookUrls = async () => {
+  try {
+    const raw = await AsyncStorage.getItem(TENANT_SESSION_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return {
+        atendimento: parsed.webhookAtendimentoUrl?.trim() || null,
+        rastreamento: parsed.webhookRastreamentoUrl?.trim() || null,
+        aberturaOs: parsed.webhookAberturaOsUrl?.trim() || null,
+        despesas: parsed.webhookDespesasUrl?.trim() || null,
+      };
+    }
+  } catch {}
+  return {
+    atendimento: null,
+    rastreamento: null,
+    aberturaOs: null,
+    despesas: null,
+  };
+};
+
+export const LOGGED_TECNICO_PIN_KEY = '@logged_tecnico_pin';
+
+export const syncTecnicoLoginSupabase = async (numericCode: string, deviceId: string) => {
+  try {
+    const SUPABASE_URL = 'https://mtqkswikviiywcidnkwt.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_9qRckOwvDZm6pqCrZeAozw_frGDglf0';
+    await fetch(
+      `${SUPABASE_URL}/rest/v1/tecnicos?codigo_funcionario=eq.${encodeURIComponent(numericCode.trim())}`,
+      {
+        method: 'PATCH',
+        headers: {
+          apikey: SUPABASE_KEY,
+          Authorization: `Bearer ${SUPABASE_KEY}`,
+          'Content-Type': 'application/json',
+          Prefer: 'return=minimal',
+        },
+        body: JSON.stringify({
+          dispositivo_id: deviceId,
+          ultimo_acesso: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }),
+      }
+    );
+  } catch {}
+};
+
+export const checkIsSessionRevoked = async (): Promise<boolean> => {
+  try {
+    const pin = await AsyncStorage.getItem(LOGGED_TECNICO_PIN_KEY);
+    if (!pin) return false;
+    const SUPABASE_URL = 'https://mtqkswikviiywcidnkwt.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_9qRckOwvDZm6pqCrZeAozw_frGDglf0';
+    const resp = await fetch(
+      `${SUPABASE_URL}/rest/v1/tecnicos?codigo_funcionario=eq.${encodeURIComponent(pin.trim())}&select=dispositivo_id,ativo`,
+      {
+        headers: {
+          apikey: SUPABASE_KEY,
+          Authorization: `Bearer ${SUPABASE_KEY}`,
+        },
+      }
+    );
+    if (resp.ok) {
+      const data = await resp.json();
+      if (Array.isArray(data) && data.length > 0) {
+        const tech = data[0];
+        if (!tech.ativo || !tech.dispositivo_id) {
+          return true;
+        }
+      }
+    }
+    return false;
+  } catch {
+    return false;
+  }
 };
 
 /**
@@ -153,8 +248,33 @@ export const setLoggedUserRole = async (role: string): Promise<void> => {
  */
 export const logoutLoggedTecnico = async (): Promise<void> => {
   try {
+    const savedPin = await AsyncStorage.getItem(LOGGED_TECNICO_PIN_KEY);
+    if (savedPin) {
+      const SUPABASE_URL = 'https://mtqkswikviiywcidnkwt.supabase.co';
+      const SUPABASE_KEY = 'sb_publishable_9qRckOwvDZm6pqCrZeAozw_frGDglf0';
+      fetch(
+        `${SUPABASE_URL}/rest/v1/tecnicos?codigo_funcionario=eq.${encodeURIComponent(savedPin.trim())}`,
+        {
+          method: 'PATCH',
+          headers: {
+            apikey: SUPABASE_KEY,
+            Authorization: `Bearer ${SUPABASE_KEY}`,
+            'Content-Type': 'application/json',
+            Prefer: 'return=minimal',
+          },
+          body: JSON.stringify({
+            dispositivo_id: null,
+            ultimo_acesso: null,
+            updated_at: new Date().toISOString(),
+          }),
+        }
+      ).catch(() => {});
+    }
     await AsyncStorage.removeItem(LOGGED_TECNICO_KEY);
     await AsyncStorage.removeItem(LOGGED_USER_ROLE_KEY);
+    await AsyncStorage.removeItem(LOGGED_TECNICO_PIN_KEY);
+    await AsyncStorage.removeItem('@vegasync_tenant_session_v2');
+    await AsyncStorage.removeItem('@keep_logged_in');
   } catch {}
 };
 
@@ -313,6 +433,8 @@ export const verifyNumericCodeSgp = async (
     if (isApproved && tecnicoNome) {
       await setLoggedTecnicoName(tecnicoNome);
       await setLoggedUserRole(finalRole);
+      await AsyncStorage.setItem(LOGGED_TECNICO_PIN_KEY, numericCode.trim());
+      syncTecnicoLoginSupabase(numericCode.trim(), deviceId).catch(() => {});
       return {
         sucesso: true,
         liberado: true,
@@ -331,6 +453,8 @@ export const verifyNumericCodeSgp = async (
     if (response.ok && tecnicoNome) {
       await setLoggedTecnicoName(tecnicoNome);
       await setLoggedUserRole(finalRole);
+      await AsyncStorage.setItem(LOGGED_TECNICO_PIN_KEY, numericCode.trim());
+      syncTecnicoLoginSupabase(numericCode.trim(), deviceId).catch(() => {});
       return {
         sucesso: true,
         liberado: true,
@@ -490,11 +614,14 @@ export const sendAttendanceWebhook = async (
       },
     };
 
-    console.log(`[Webhook] Enviando notificação '${status}' (Técnico: ${nomeTecnicoFinal}) da O.S. #${osId} para ${WEBHOOK_URL}...`);
+    const tenantUrls = await getTenantWebhookUrls();
+    const targetUrl = tenantUrls.atendimento || WEBHOOK_URL;
+
+    console.log(`[Webhook] Enviando notificação '${status}' (Técnico: ${nomeTecnicoFinal}) da O.S. #${osId} para ${targetUrl}...`);
 
     let response: Response;
     try {
-      response = await fetch(WEBHOOK_URL, {
+      response = await fetch(targetUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -502,7 +629,7 @@ export const sendAttendanceWebhook = async (
         body: JSON.stringify(payload),
       });
 
-      if (response.status === 404) {
+      if (response.status === 404 && targetUrl.includes('n8n.zentos.com.br')) {
         const testUrl = 'https://n8n.zentos.com.br/webhook-test/recebeconcluido';
         console.log(`[Webhook] 404 na produção. Tentando rota de teste do n8n: ${testUrl}...`);
         response = await fetch(testUrl, {
@@ -514,15 +641,19 @@ export const sendAttendanceWebhook = async (
         });
       }
     } catch (e) {
-      const testUrl = 'https://n8n.zentos.com.br/webhook-test/recebeconcluido';
-      console.log(`[Webhook] Falha de conexão. Tentando rota de teste: ${testUrl}...`);
-      response = await fetch(testUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
+      if (targetUrl.includes('n8n.zentos.com.br')) {
+        const testUrl = 'https://n8n.zentos.com.br/webhook-test/recebeconcluido';
+        console.log(`[Webhook] Falha de conexão. Tentando rota de teste: ${testUrl}...`);
+        response = await fetch(testUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+        });
+      } else {
+        return false;
+      }
     }
 
     console.log(`[Webhook] Resposta do servidor (${response.status}):`, await response.text());
@@ -582,6 +713,34 @@ export const upsertRastreamentoSupabase = async (payload: {
 };
 
 /**
+ * Remove o rastreamento em tempo real do Supabase quando a O.S. for finalizada ou encerrada
+ */
+export const removeRastreamentoSupabase = async (osId: string | number): Promise<boolean> => {
+  try {
+    const endpoint = `${SUPABASE_CONFIG.url}/rest/v1/rastreamento_tecnico?os_id=eq.${encodeURIComponent(String(osId))}`;
+    const response = await fetch(endpoint, {
+      method: 'DELETE',
+      headers: {
+        'apikey': SUPABASE_CONFIG.key,
+        'Authorization': `Bearer ${SUPABASE_CONFIG.key}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      console.warn('[Supabase Remove Rastreamento Error]:', response.status, errText);
+      return false;
+    }
+    console.log(`[Supabase] Rastreamento da O.S. #${osId} removido com sucesso.`);
+    return true;
+  } catch (error) {
+    console.warn('[Supabase Remove Rastreamento Exception]:', error);
+    return false;
+  }
+};
+
+/**
  * Envia atualizações periódicas da localização GPS do técnico em tempo real para o Supabase e n8n
  * (enquanto a O.S. estiver em execução) para acompanhamento pelo cliente.
  */
@@ -617,7 +776,26 @@ export const sendTechnicianLocationTrackingWebhook = async (
       }
     }
 
-    // 1. Envia / Atualiza em tempo real no Supabase
+    // 1. Envia / Atualiza em tempo real no microserviço de rastreamento da Vega (https://rastreamento.integrareplus.com)
+    fetch('https://rastreamento.integrareplus.com/api/tracking/ping', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        os_id: osId,
+        tecnico: nomeTecnicoFinal,
+        codigo_empresa: (chamado as any)?.empresa_codigo || 'VEGA01',
+        latitude: lat,
+        longitude: lng,
+        cliente_nome: chamado?.cliente || '',
+        cliente_latitude: clientLat,
+        cliente_longitude: clientLng,
+        velocidade: velocidadeKmh,
+        status: 'atendimento',
+        dispositivo_id: deviceId,
+      }),
+    }).catch((pingErr) => console.warn('[TrackingService] Erro ao enviar ping:', pingErr));
+
+    // 2. Envia / Atualiza em tempo real no Supabase
     upsertRastreamentoSupabase({
       os_id: osId,
       tecnico: nomeTecnicoFinal,
@@ -647,15 +825,18 @@ export const sendTechnicianLocationTrackingWebhook = async (
       dispositivo_id: deviceId,
     };
 
+    const tenantUrls = await getTenantWebhookUrls();
+    const targetUrl = tenantUrls.rastreamento || LOCATION_TRACKING_WEBHOOK_URL;
+
     let response: Response;
     try {
-      response = await fetch(LOCATION_TRACKING_WEBHOOK_URL, {
+      response = await fetch(targetUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
 
-      if (response.status === 404) {
+      if (response.status === 404 && targetUrl.includes('n8n.zentos.com.br')) {
         const testUrl = 'https://n8n.zentos.com.br/webhook-test/localizacaotecnico';
         response = await fetch(testUrl, {
           method: 'POST',
@@ -664,12 +845,14 @@ export const sendTechnicianLocationTrackingWebhook = async (
         });
       }
     } catch {
-      const testUrl = 'https://n8n.zentos.com.br/webhook-test/localizacaotecnico';
-      response = await fetch(testUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
+      if (targetUrl.includes('n8n.zentos.com.br')) {
+        const testUrl = 'https://n8n.zentos.com.br/webhook-test/localizacaotecnico';
+        response = await fetch(testUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+      }
     }
 
     return true;
@@ -736,10 +919,11 @@ export const sendCreateOsWebhook = async (data: CreateOsWebhookPayload): Promise
       timestamp: new Date().toISOString(),
     };
 
-    const primaryUrl = 'https://n8n.zentos.com.br/webhook/recebeos';
+    const tenantUrls = await getTenantWebhookUrls();
+    const primaryUrl = tenantUrls.aberturaOs || 'https://n8n.zentos.com.br/webhook/recebeos';
     const fallbackUrl = 'https://n8n.zentos.com.br/webhook-test/recebeos';
 
-    console.log('[Create OS Webhook] Enviando para n8n:', mensagemFormatada);
+    console.log('[Create OS Webhook] Enviando para webhook:', mensagemFormatada);
 
     try {
       let res = await fetch(primaryUrl, {
@@ -748,7 +932,7 @@ export const sendCreateOsWebhook = async (data: CreateOsWebhookPayload): Promise
         body: JSON.stringify(payload),
       });
 
-      if (!res.ok) {
+      if (!res.ok && primaryUrl.includes('n8n.zentos.com.br')) {
         res = await fetch(fallbackUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -757,16 +941,19 @@ export const sendCreateOsWebhook = async (data: CreateOsWebhookPayload): Promise
       }
       return res.ok;
     } catch {
-      try {
-        const resFallback = await fetch(fallbackUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-        return resFallback.ok;
-      } catch {
-        return false;
+      if (primaryUrl.includes('n8n.zentos.com.br')) {
+        try {
+          const resFallback = await fetch(fallbackUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+          return resFallback.ok;
+        } catch {
+          return false;
+        }
       }
+      return false;
     }
   } catch (error) {
     console.warn('[Create OS Webhook] Erro ao enviar webhook:', error);
@@ -858,7 +1045,8 @@ export const sendDespesasWebhook = async (data: DespesaWebhookPayload): Promise<
       timestamp: new Date().toISOString(),
     };
 
-    const primaryUrl = 'https://n8n.zentos.com.br/webhook/despesas';
+    const tenantUrls = await getTenantWebhookUrls();
+    const primaryUrl = tenantUrls.despesas || 'https://n8n.zentos.com.br/webhook/despesas';
     const fallbackUrl = 'https://n8n.zentos.com.br/webhook-test/despesas';
 
     try {
@@ -868,7 +1056,7 @@ export const sendDespesasWebhook = async (data: DespesaWebhookPayload): Promise<
         body: JSON.stringify(payloadWebhook),
       });
 
-      if (!res.ok) {
+      if (!res.ok && primaryUrl.includes('n8n.zentos.com.br')) {
         res = await fetch(fallbackUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -877,16 +1065,19 @@ export const sendDespesasWebhook = async (data: DespesaWebhookPayload): Promise<
       }
       return supabaseOk || res.ok;
     } catch {
-      try {
-        const resFallback = await fetch(fallbackUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payloadWebhook),
-        });
-        return supabaseOk || resFallback.ok;
-      } catch {
-        return supabaseOk;
+      if (primaryUrl.includes('n8n.zentos.com.br')) {
+        try {
+          const resFallback = await fetch(fallbackUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payloadWebhook),
+          });
+          return supabaseOk || resFallback.ok;
+        } catch {
+          return supabaseOk;
+        }
       }
+      return supabaseOk;
     }
   } catch (error) {
     console.warn('[Despesas Webhook/Supabase] Erro:', error);

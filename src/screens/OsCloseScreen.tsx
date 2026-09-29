@@ -17,7 +17,8 @@ import * as Device from 'expo-device';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import { updateChamadoStatus, updateContratoLocalizacao, addAnexoBase64, saveFinalizedChamadoLocal, ChamadoItem } from '../services/sgpApi';
-import { sendAttendanceWebhook } from '../services/webhookService';
+import { sendAttendanceWebhook, removeRastreamentoSupabase } from '../services/webhookService';
+import { stopBackgroundLocationTracking } from '../services/backgroundTrackingTask';
 import { Feather } from '@expo/vector-icons';
 
 interface Props {
@@ -175,6 +176,12 @@ export const OsCloseScreen: React.FC<Props> = ({ osId, chamado, onBack, onFinish
         osId,
         coordsFormatted,
       }).catch((err) => console.warn('Erro ao disparar webhook concluido:', err));
+
+      // 3. Remove o técnico do rastreamento em tempo real do Supabase e encerra rastreamento em background
+      removeRastreamentoSupabase(osId).catch((err) =>
+        console.warn('Erro ao remover rastreamento no Supabase:', err)
+      );
+      stopBackgroundLocationTracking().catch(() => {});
 
       await saveFinalizedChamadoLocal({
         os_id: osId,
