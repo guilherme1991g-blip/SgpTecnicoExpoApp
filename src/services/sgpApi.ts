@@ -948,16 +948,7 @@ export const getAddressPrefix3 = (address?: string): string => {
  */
 export const fetchContratosOfflineRegiao = async (logradouroCliente?: string): Promise<{ total: number; clientesOffline: OfflineContractItem[] }> => {
   try {
-    const response = await api.post('/ws/radius/radacct/list/all/', {
-      app: SGP_CONFIG.appName,
-      token: SGP_CONFIG.token,
-      limit: 500,
-      online: false,
-    }, {
-      headers: { 'Content-Type': 'application/json' },
-    });
-
-    const list: OfflineContractItem[] = Array.isArray(response.data?.result) ? response.data.result : [];
+    const list = await fetchAllClientesOfflineSgp();
 
     const targetLogradouroClean = extractRealLogradouroName(logradouroCliente);
     const prefix = targetLogradouroClean.slice(0, 3);
@@ -968,9 +959,9 @@ export const fetchContratosOfflineRegiao = async (logradouroCliente?: string): P
 
     const filtered = list.filter((item) => {
       const itemLogrClean = extractRealLogradouroName(item.endereco_logradouro);
-      const itemBairroClean = extractRealLogradouroName(item.endereco_bairro);
+      const itemBairroClean = extractRealLogradouroName(item.endereco_bairro || item.bairroCanonico);
 
-      // O logradouro ou bairro real do item precisa comecar estritamente pelo prefixo de 3 letras do logradouro do cliente
+      // O logradouro ou bairro real do item precisa comecar pelo prefixo de 3 letras do logradouro do cliente
       return (
         (itemLogrClean && itemLogrClean.startsWith(prefix)) ||
         (itemBairroClean && itemBairroClean.startsWith(prefix))
@@ -979,10 +970,10 @@ export const fetchContratosOfflineRegiao = async (logradouroCliente?: string): P
 
     return {
       total: filtered.length,
-      clientesOffline: filtered,
+      clientesOffline: filtered as OfflineContractItem[],
     };
   } catch (error) {
-    console.warn('Erro ao buscar contratos offline /ws/radius/radacct/list/all/:', error);
+    console.warn('Erro ao buscar contratos offline da região:', error);
     return { total: 0, clientesOffline: [] };
   }
 };
@@ -1210,13 +1201,15 @@ export const fetchContractIpByLogin = async (login?: string): Promise<string> =>
   }
 
   try {
-    const res = await api.post('/ws/radius/radacct/list/all/', {
-      app: SGP_CONFIG.appName,
-      token: SGP_CONFIG.token,
+    const config = await getTenantSgpConfig();
+    const res = await axios.post(`${config.baseUrl}/ws/radius/radacct/list/all/`, {
+      app: config.appName,
+      token: config.token,
       limit: 500,
       online: true,
     }, {
       headers: { 'Content-Type': 'application/json' },
+      timeout: 15000,
     });
 
     const list: any[] = Array.isArray(res.data?.result) ? res.data.result : [];
