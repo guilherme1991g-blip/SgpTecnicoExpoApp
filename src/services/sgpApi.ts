@@ -1105,37 +1105,22 @@ export const fetchAllClientesOfflineSgp = async (): Promise<OfflineClienteDetail
   try {
     const config = await getTenantSgpConfig();
 
-    let response;
-    try {
-      response = await axios.post(`${config.baseUrl}/ws/radius/radacct/list/all/`, {
-        app: config.appName,
-        token: config.token,
-        limit: 2000,
-        online: false,
-        last_session: true,
-      }, {
-        headers: { 'Content-Type': 'application/json' },
-        timeout: 45000,
-      });
-    } catch (tenantErr) {
-      if (config.baseUrl !== SGP_CONFIG.baseUrl) {
-        console.warn('Tentando fallback com SGP_CONFIG padrão para clientes offline...');
-        response = await axios.post(`${SGP_CONFIG.baseUrl}/ws/radius/radacct/list/all/`, {
-          app: SGP_CONFIG.appName,
-          token: SGP_CONFIG.token,
-          limit: 2000,
-          online: false,
-          last_session: true,
-        }, {
-          headers: { 'Content-Type': 'application/json' },
-          timeout: 45000,
-        });
-      } else {
-        throw tenantErr;
-      }
-    }
+    const response = await axios.post(`${config.baseUrl}/ws/radius/radacct/list/all/`, {
+      app: config.appName,
+      token: config.token,
+      limit: 2000,
+      online: false,
+      last_session: true,
+    }, {
+      headers: { 'Content-Type': 'application/json' },
+      timeout: 45000,
+    });
 
     const rawData = response.data;
+    if (rawData && rawData.error) {
+      throw new Error(typeof rawData.error === 'string' ? rawData.error : JSON.stringify(rawData.error));
+    }
+
     let list: any[] = [];
     if (Array.isArray(rawData)) {
       list = rawData;
@@ -1205,9 +1190,9 @@ export const fetchAllClientesOfflineSgp = async (): Promise<OfflineClienteDetail
       const st = (item.statusContrato || '').toLowerCase();
       return !st.includes('cancelad');
     });
-  } catch (error) {
+  } catch (error: any) {
     console.warn('Erro ao buscar todos os clientes offline no SGP:', error);
-    return [];
+    throw error;
   }
 };
 

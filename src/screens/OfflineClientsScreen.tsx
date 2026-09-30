@@ -24,17 +24,20 @@ interface Props {
 export const OfflineClientsScreen: React.FC<Props> = ({ onBackToOs }) => {
   const [clientesOffline, setClientesOffline] = useState<OfflineClienteDetailedItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [selectedBairro, setSelectedBairro] = useState<string>('TODOS');
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
 
   const loadData = async () => {
     setIsLoading(true);
+    setErrorMessage(null);
     try {
       const data = await fetchAllClientesOfflineSgp();
       setClientesOffline(data);
-    } catch (e) {
+    } catch (e: any) {
       setClientesOffline([]);
+      setErrorMessage(e?.message || 'Não foi possível carregar os clientes offline do SGP. Verifique suas credenciais.');
     } finally {
       setIsLoading(false);
     }
@@ -353,6 +356,15 @@ export const OfflineClientsScreen: React.FC<Props> = ({ onBackToOs }) => {
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#F59E0B" />
           <Text style={styles.loadingText}>Carregando todos os contratos offline do SGP...</Text>
+        </View>
+      ) : errorMessage ? (
+        <View style={styles.emptyContainer}>
+          <Feather name="alert-triangle" size={44} color="#EF4444" />
+          <Text style={[styles.emptyTitle, { color: '#EF4444' }]}>Erro de Conexão SGP</Text>
+          <Text style={styles.emptySub}>{errorMessage}</Text>
+          <TouchableOpacity onPress={loadData} style={{ marginTop: 16, backgroundColor: '#EF4444', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8 }}>
+            <Text style={{ color: '#FFFFFF', fontWeight: 'bold' }}>Tentar Novamente</Text>
+          </TouchableOpacity>
         </View>
       ) : filteredList.length === 0 ? (
         <View style={styles.emptyContainer}>
