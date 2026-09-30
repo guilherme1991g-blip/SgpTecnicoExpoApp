@@ -1108,8 +1108,9 @@ export const fetchAllClientesOfflineSgp = async (): Promise<OfflineClienteDetail
     const response = await axios.post(`${config.baseUrl}/ws/radius/radacct/list/all/`, {
       app: config.appName,
       token: config.token,
-      limit: 500,
+      limit: 2000,
       online: false,
+      last_session: true,
     }, {
       headers: { 'Content-Type': 'application/json' },
       timeout: 15000,
