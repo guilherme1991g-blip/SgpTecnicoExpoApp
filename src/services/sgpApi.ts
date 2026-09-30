@@ -1,12 +1,27 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ChamadoItem, HistoricoConexaoItem, OnuLogItem } from '../types/sgp';
+import { getTenantSession } from './multiTenantService';
 export { ChamadoItem, HistoricoConexaoItem, OnuLogItem };
 
 export const SGP_CONFIG = {
   baseUrl: 'https://webcnnect.sgp.tsmx.com.br',
   appName: 'App',
   token: '9720002b-a4f6-4c48-9a20-65f86669f6d6',
+};
+
+export const getTenantSgpConfig = async () => {
+  try {
+    const session = await getTenantSession();
+    if (session && session.sgpUrl && session.sgpToken) {
+      return {
+        baseUrl: session.sgpUrl.replace(/\/+$/, ''),
+        appName: session.sgpApp || 'App',
+        token: session.sgpToken,
+      };
+    }
+  } catch {}
+  return SGP_CONFIG;
 };
 
 const api = axios.create({
@@ -1062,13 +1077,24 @@ export const sanitizePernambucoCoords = (
       finalLng = temp;
     }
 
-    // Valida faixa de latitude (-6.0 a -10.0) e longitude (-33.0 a -38.0) para Pernambuco
-    if (finalLat <= -6.0 && finalLat >= -10.0 && finalLng <= -33.0 && finalLng >= -38.0) {
+    // Valida faixa de latitude (-5.0 a -35.0) e longitude (-30.0 a -75.0) para Brasil / Nordeste
+    if (finalLat <= 5.0 && finalLat >= -35.0 && finalLng <= -30.0 && finalLng >= -75.0) {
       return { lat: Number(finalLat.toFixed(6)), lng: Number(finalLng.toFixed(6)) };
     }
   }
 
   return null;
+};
+
+const BAIRRO_FALLBACK_COORDS: Record<string, { lat: number; lng: number }> = {
+  'CAPIVARA': { lat: -7.981224, lng: -35.842845 },
+  'SERRA DA ONÇA': { lat: -7.952617, lng: -35.901976 },
+  'SERRA': { lat: -7.952617, lng: -35.901976 },
+  'PEGA PÉ': { lat: -7.945296, lng: -35.835910 },
+  'ALGODÃO DO MANSO': { lat: -7.948801, lng: -35.879766 },
+  'LAGOA DE JOÃO CARLOS': { lat: -7.925000, lng: -35.865000 },
+  'CHÃ GRANDE': { lat: -7.935000, lng: -35.870000 },
+  'CENTRO': { lat: -7.877117, lng: -35.860927 },
 };
 
 /**
@@ -1077,19 +1103,29 @@ export const sanitizePernambucoCoords = (
  */
 export const fetchAllClientesOfflineSgp = async (): Promise<OfflineClienteDetailedItem[]> => {
   try {
-    const response = await api.post('/ws/radius/radacct/list/all/', {
-      app: SGP_CONFIG.appName,
-      token: SGP_CONFIG.token,
+    const config = await getTenantSgpConfig();
+
+    const response = await axios.post(`${config.baseUrl}/ws/radius/radacct/list/all/`, {
+      app: config.appName,
+      token: config.token,
       limit: 500,
       online: false,
     }, {
       headers: { 'Content-Type': 'application/json' },
+      timeout: 15000,
     });
 
-    const list: any[] = Array.isArray(response.data?.result) ? response.data.result : [];
-
-    // Coordenada padrão de fallback solicitada quando o contrato não tiver GPS no SGP (-7.8771171, -35.8609273)
-    const DEFAULT_FALLBACK_COORDS = { lat: -7.8771171, lng: -35.8609273 };
+    const rawData = response.data;
+    let list: any[] = [];
+    if (Array.isArray(rawData)) {
+      list = rawData;
+    } else if (Array.isArray(rawData?.result)) {
+      list = rawData.result;
+    } else if (Array.isArray(rawData?.data)) {
+      list = rawData.data;
+    } else if (Array.isArray(rawData?.clientes)) {
+      list = rawData.clientes;
+    }
 
     // Mapeia instantaneamente a lista do RADIUS sem fazer centenas de chamadas extras HTTP
     const enrichedList: OfflineClienteDetailedItem[] = list.map((item, index) => {
@@ -1112,12 +1148,20 @@ export const fetchAllClientesOfflineSgp = async (): Promise<OfflineClienteDetail
         lat = exactCoords.lat;
         lng = exactCoords.lng;
         hasExactCoords = true;
+      } else {
+        // Fallback para coordenadas aproximadas do bairro com pequeno deslocamento para distribuição no mapa
+        const fallback = BAIRRO_FALLBACK_COORDS[bairroCanonico] || { lat: -7.877117, lng: -35.860927 };
+        const jitterLat = ((index * 17) % 50 - 25) * 0.0001;
+        const jitterLng = ((index * 23) % 50 - 25) * 0.0001;
+        lat = Number((fallback.lat + jitterLat).toFixed(6));
+        lng = Number((fallback.lng + jitterLng).toFixed(6));
+        hasExactCoords = true;
       }
 
       return {
         servico_id: item.servico_id,
-        nome: item.nome || 'Cliente SGP',
-        pppoe_login: item.pppoe_login || '',
+        nome: item.nome || item.cliente || 'Cliente SGP',
+        pppoe_login: item.pppoe_login || item.login || '',
         pppoe_senha: item.pppoe_senha || '',
         plano: item.plano || '',
         endereco_logradouro: item.endereco_logradouro || '',
@@ -1125,9 +1169,9 @@ export const fetchAllClientesOfflineSgp = async (): Promise<OfflineClienteDetail
         bairroCanonico,
         endereco_cidade: item.endereco_cidade || '',
         endereco_uf: item.endereco_uf || '',
-        endereco: item.endereco || '',
+        endereco: item.endereco || `${item.endereco_logradouro || ''} ${rawB}`.trim(),
         online: false,
-        statusContrato: item.status || 'Ativo',
+        statusContrato: item.status || item.status_contrato || 'Ativo',
         acctstoptime,
         radacct: item.radacct,
         latitude: lat,

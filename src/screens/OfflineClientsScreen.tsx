@@ -92,7 +92,7 @@ export const OfflineClientsScreen: React.FC<Props> = ({ onBackToOs }) => {
   // Gera o HTML do mapa Leaflet interativo com pinos vermelhos para cada cliente offline
   const generateMapHtml = useMemo(() => {
     const markers = filteredList
-      .filter((item) => item.hasExactCoords && item.latitude !== undefined && item.longitude !== undefined)
+      .filter((item) => item.latitude !== undefined && item.longitude !== undefined && !isNaN(item.latitude) && !isNaN(item.longitude))
       .map((item) => ({
         id: item.servico_id || item.nome,
         nome: (item.nome || 'Cliente SGP').replace(/'/g, "\\'"),
@@ -101,7 +101,7 @@ export const OfflineClientsScreen: React.FC<Props> = ({ onBackToOs }) => {
         login: (item.pppoe_login || '').replace(/'/g, "\\'"),
         lat: item.latitude!,
         lng: item.longitude!,
-        exact: 'Coordenadas Cadastradas SGP',
+        exact: item.hasExactCoords ? 'Coordenadas Cadastradas SGP' : 'Aproximado por Bairro',
       }));
 
     const centerLat = markers.length > 0 ? markers[0].lat : -7.8771171;
