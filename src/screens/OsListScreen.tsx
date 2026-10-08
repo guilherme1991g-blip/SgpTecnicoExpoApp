@@ -323,7 +323,7 @@ export const OsListScreen: React.FC<Props> = ({
           <View>
             <Text style={styles.headerTitle}>Agenda de Serviços</Text>
             <Text style={styles.headerSubtitle}>
-              {loggedTecnico || 'Técnico'} • {filteredChamados.length} OS • ⚡ OTA Update OK
+              {loggedTecnico || 'Técnico'} • {filteredChamados.length} OS
             </Text>
           </View>
         </View>
